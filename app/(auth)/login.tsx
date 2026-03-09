@@ -26,8 +26,41 @@ export default function LoginScreen() {
   };
 
   const handleSignUp = async () => {
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) setError(error.message);
+    setError(""); // clear previous error
+
+    try {
+      // 1️⃣ Sign up the user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (authError) {
+        setError(authError.message);
+        return;
+      }
+
+      const userId = authData.user?.id;
+      if (!userId) {
+        setError("Unable to get user ID from signup.");
+        return;
+      }
+
+      // 2️⃣ Create the profile row
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .insert([{ id: userId, name: "" }]); // you could prompt for name later
+
+      if (profileError) {
+        setError(profileError.message);
+        return;
+      }
+
+      console.log("Profile created successfully!", profileData);
+    } catch (err) {
+      console.error("Sign up error:", err);
+      setError("An unexpected error occurred during sign up.");
+    }
   };
 
   return (
