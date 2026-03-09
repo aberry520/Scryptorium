@@ -66,7 +66,7 @@ export default function ModalScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="title">Add a Book test</ThemedText>
+      <ThemedText type="title">Add a Book</ThemedText>
 
       <ThemedTextInput
         placeholder="Book Title"
