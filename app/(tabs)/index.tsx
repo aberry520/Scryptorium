@@ -59,7 +59,7 @@ function BookSpine({
     Math.max(SHELF_HEIGHT - 120, SHELF_HEIGHT - 60 + heightVariance),
   );
 
-  const textWidth = spineHeight - 80;
+  const textWidth = SHELF_HEIGHT - 20; // was spineHeight - 20, but it wasn't working due to expo/react native timing of when dimensions are calculated, so using shelf height which is constant instead of spine height which is variable
 
   return (
     <TouchableOpacity
