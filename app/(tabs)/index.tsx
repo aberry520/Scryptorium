@@ -1,18 +1,15 @@
-import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
 import { supabase } from "@/lib/supabase";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
   Button,
+  Dimensions,
   ScrollView,
-  RefreshControl,
   StyleSheet,
-  View,
   Text,
   TouchableOpacity,
-  Dimensions,
+  View,
 } from "react-native";
 
 type LibraryBook = {
@@ -62,6 +59,8 @@ function BookSpine({
     Math.max(SHELF_HEIGHT - 120, SHELF_HEIGHT - 60 + heightVariance),
   );
 
+  const textWidth = spineHeight - 80;
+
   return (
     <TouchableOpacity
       activeOpacity={0.75}
@@ -72,16 +71,27 @@ function BookSpine({
         style={[styles.topBand, { backgroundColor: "rgba(255,255,255,0.15)" }]}
       />
 
-      {/* Rotated title text */}
-      <View style={styles.spineTitleContainer}>
-        <Text style={styles.spineTitle} numberOfLines={1} ellipsizeMode="tail">
-          {book.title.toUpperCase()}
-        </Text>
+      {/* Rotated title */}
+      <View style={styles.spineMid}>
+        <View
+          style={[
+            styles.rotatedContainer,
+            { width: textWidth, height: SPINE_WIDTH },
+          ]}
+        >
+          <Text
+            style={styles.spineTitle}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {book.title.toUpperCase()}
+          </Text>
+        </View>
       </View>
 
-      {/* Author near bottom */}
+      {/* Author flat at bottom */}
       <View style={styles.spineAuthorContainer}>
-        <Text style={styles.spineAuthor} numberOfLines={1}>
+        <Text style={styles.spineAuthor} numberOfLines={2} ellipsizeMode="tail">
           {book.author.split(" ").slice(-1)[0]}
         </Text>
       </View>
@@ -91,7 +101,7 @@ function BookSpine({
         style={[styles.bottomBand, { backgroundColor: "rgba(0,0,0,0.2)" }]}
       />
 
-      {/* Subtle spine highlight (left edge) */}
+      {/* Spine highlight */}
       <View style={styles.spineHighlight} />
     </TouchableOpacity>
   );
@@ -156,7 +166,6 @@ export default function HomeScreen() {
             //   <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
             // }
             contentContainerStyle={styles.spineRow}
-            scrollEnabled={true} // horizontal only
             bounces={false} // disable the vertical bounce
             overScrollMode="never" // Android only
             scrollEventThrottle={16} // smoother scroll event handling
@@ -231,10 +240,9 @@ const styles = StyleSheet.create({
   spine: {
     width: SPINE_WIDTH,
     borderRadius: 2,
-    overflow: "hidden",
-    justifyContent: "space-between",
+    // removed overflow: "hidden" so author is never clipped
     alignItems: "center",
-    // Subtle shadow for depth
+    justifyContent: "space-between",
     shadowColor: "#000",
     shadowOffset: { width: 3, height: 4 },
     shadowOpacity: 0.5,
@@ -245,11 +253,17 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 18,
   },
-  spineTitleContainer: {
+  spineMid: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    overflow: "hidden",
     width: "100%",
+  },
+  rotatedContainer: {
+    transform: [{ rotate: "-90deg" }],
+    justifyContent: "center",
+    alignItems: "center",
   },
   spineTitle: {
     color: "#FFFFFF",
@@ -257,22 +271,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.5,
     textAlign: "center",
-    // Rotate text to run along the spine (bottom-to-top)
-    transform: [{ rotate: "-90deg" }],
-    width: SHELF_HEIGHT - 100,
     fontFamily: "Georgia",
   },
   spineAuthorContainer: {
-    width: "100%",
+    width: SPINE_WIDTH,
     alignItems: "center",
-    paddingBottom: 4,
+    paddingHorizontal: 2,
+    paddingBottom: 2,
   },
   spineAuthor: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 8,
-    letterSpacing: 0.5,
-    transform: [{ rotate: "-90deg" }],
-    width: 40,
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 7,
+    letterSpacing: 0.3,
     textAlign: "center",
   },
   bottomBand: {
@@ -286,6 +296,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 3,
     backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 2,
   },
   shelfPlank: {
     height: 18,
