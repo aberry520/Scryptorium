@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { BookSpine } from "@/components/book-spine";
+import { BookSpine } from "@/components/BookSpine";
 
 type LibraryBook = {
   library_id: number;
@@ -43,6 +43,20 @@ export default function HomeScreen() {
       setBooks(data || []);
     } catch (error: any) {
       Alert.alert("Error fetching library", error.message);
+    }
+  };
+
+  const deleteBook = async (libraryId: number) => {
+    try {
+      const { error } = await supabase
+        .from("library")
+        .delete()
+        .eq("id", libraryId);
+
+      if (error) throw error;
+      setBooks((prev) => prev.filter((b) => b.library_id !== libraryId));
+    } catch (error: any) {
+      Alert.alert("Error removing book", error.message);
     }
   };
 
@@ -87,7 +101,12 @@ export default function HomeScreen() {
             scrollEventThrottle={16} // smoother scroll event handling
           >
             {books.map((book, i) => (
-              <BookSpine key={book.book_id} book={book} colorIndex={i} />
+              <BookSpine
+                key={book.book_id}
+                book={book}
+                colorIndex={i}
+                onDelete={deleteBook}
+              />
             ))}
           </ScrollView>
         )}

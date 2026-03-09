@@ -1,4 +1,5 @@
 import {
+  Alert,
   Dimensions,
   StyleSheet,
   Text,
@@ -41,9 +42,11 @@ const SHELF_HEIGHT = SCREEN_HEIGHT * 0.62;
 export function BookSpine({
   book,
   colorIndex,
+  onDelete,
 }: {
   book: LibraryBook;
   colorIndex: number;
+  onDelete: (libraryId: number) => Promise<void>;
 }) {
   const color = SPINE_COLORS[colorIndex % SPINE_COLORS.length];
   // Slightly vary heights for realism
@@ -53,11 +56,28 @@ export function BookSpine({
     Math.max(SHELF_HEIGHT - 120, SHELF_HEIGHT - 60 + heightVariance),
   );
 
-  const textWidth = SHELF_HEIGHT - 20; // was spineHeight - 20, but it wasn't working due to expo/react native timing of when dimensions are calculated, so using shelf height which is constant instead of spine height which is variable
+  const textWidth = SHELF_HEIGHT - 20;
+
+  const handleLongPress = () => {
+    Alert.alert(
+      "Remove from Library",
+      `Remove "${book.title}" from your library?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => onDelete(book.library_id),
+        },
+      ],
+    );
+  };
 
   return (
     <TouchableOpacity
       activeOpacity={0.75}
+      onLongPress={handleLongPress}
+      delayLongPress={400}
       style={[styles.spine, { backgroundColor: color, height: spineHeight }]}
     >
       {/* Top decorative band */}
