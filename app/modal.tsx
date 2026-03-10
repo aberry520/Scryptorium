@@ -18,8 +18,10 @@ import { Mode, Book } from "@/types";
 export default function ModalScreen() {
   const [query, setQuery] = useState("");
   const [author, setAuthor] = useState("");
+  const [isbn, setIsbn] = useState("");
   const [results, setResults] = useState<Book[]>([]);
   const [searching, setSearching] = useState(false);
+  const [isbnLoading, setIsbnLoading] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [mode, setMode] = useState<Mode>("search");
   const [loading, setLoading] = useState(false);
@@ -41,7 +43,7 @@ export default function ModalScreen() {
       setSearching(true);
       try {
         const { data, error } = await supabase
-          .from("books")
+          .from("books_with_authors")
           .select("*")
           .or(`title.ilike.%${query.trim()}%,author.ilike.%${query.trim()}%`)
           .limit(8);
@@ -56,7 +58,7 @@ export default function ModalScreen() {
     }, 350);
   }, [query, mode]);
 
-  const addToLibrary = async (bookId: number) => {
+  const addToLibrary = async (bookId: string) => {
     setLoading(true);
     try {
       const {
@@ -64,22 +66,6 @@ export default function ModalScreen() {
         error: userError,
       } = await supabase.auth.getUser();
       if (userError || !user) throw userError || new Error("No user logged in");
-
-      // // Check if already in library
-      // const { data: existing } = await supabase
-      //   .from("library")
-      //   .select("id")
-      //   .eq("book_id", bookId)
-      //   .eq("user_id", user.id)
-      //   .maybeSingle();
-
-      // if (existing) {
-      //   Alert.alert(
-      //     "Already in library",
-      //     "You already have this book in your library.",
-      //   );
-      //   return;
-      // }
 
       const { error: libraryError } = await supabase
         .from("library")
@@ -109,13 +95,37 @@ export default function ModalScreen() {
       } = await supabase.auth.getUser();
       if (userError || !user) throw userError || new Error("No user logged in");
 
-      const { data: book, error: booksError } = await supabase
-        .from("books")
-        .insert({ title: query.trim(), author: author.trim() })
+      // Split "Frank Herbert" → first: "Frank", last: "Herbert"
+      const parts = author.trim().split(" ");
+      const firstName = parts.slice(0, -1).join(" ") || parts[0];
+      const lastName = parts.length > 1 ? parts[parts.length - 1] : "";
+
+      // 1. Upsert the author (avoid duplicates)
+      const { data: authorRow, error: authorError } = await supabase
+        .from("authors")
+        .upsert(
+          { first_name: firstName, last_name: lastName },
+          { onConflict: "first_name,last_name" },
+        )
         .select()
         .single();
-      if (booksError) throw booksError;
+      if (authorError) throw authorError;
 
+      // 2. Insert the book into books_v2
+      const { data: book, error: bookError } = await supabase
+        .from("books_v2")
+        .insert({ title: query.trim() })
+        .select()
+        .single();
+      if (bookError) throw bookError;
+
+      // 3. Link book and author in join table
+      const { error: joinError } = await supabase
+        .from("book_authors")
+        .insert({ book_id: book.id, author_id: authorRow.id, author_order: 1 });
+      if (joinError) throw joinError;
+
+      // 4. Add to user's library
       const { error: libraryError } = await supabase
         .from("library")
         .insert({ book_id: book.id, user_id: user.id });
@@ -127,6 +137,39 @@ export default function ModalScreen() {
       Alert.alert("Error", e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const lookupByIsbn = async () => {
+    if (isbn.trim().length < 10) {
+      Alert.alert("Error", "Please enter a valid ISBN (10 or 13 digits).");
+      return;
+    }
+
+    setIsbnLoading(true);
+    try {
+      const res = await fetch(
+        `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn.trim()}&format=json&jscmd=data`,
+      );
+      const data = await res.json();
+      const bookData = data[`ISBN:${isbn.trim()}`];
+
+      if (!bookData) {
+        Alert.alert(
+          "Not found",
+          "No book found for that ISBN. Try filling in the details manually.",
+        );
+        return;
+      }
+
+      // Pre-fill title and author from the API response
+      setQuery(bookData.title || "");
+      setAuthor(bookData.authors?.[0]?.name || "");
+      setIsbn("");
+    } catch (e: any) {
+      Alert.alert("Error", "ISBN lookup failed. Please try again.");
+    } finally {
+      setIsbnLoading(false);
     }
   };
 
@@ -143,6 +186,7 @@ export default function ModalScreen() {
     setSelectedBook(null);
     setMode("search");
     setAuthor("");
+    setIsbn("");
     setResults([]);
   };
 
@@ -184,6 +228,30 @@ export default function ModalScreen() {
           it for everyone.
         </ThemedText>
 
+        {/* ISBN auto-fill */}
+        <ThemedView style={styles.isbnRow}>
+          <ThemedTextInput
+            placeholder="ISBN (optional auto-fill)"
+            value={isbn}
+            onChangeText={setIsbn}
+            style={styles.isbnInput}
+            keyboardType="numeric"
+          />
+          <TouchableOpacity
+            style={styles.isbnBtn}
+            onPress={lookupByIsbn}
+            disabled={isbnLoading}
+          >
+            {isbnLoading ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              <ThemedText type="link">Look up</ThemedText>
+            )}
+          </TouchableOpacity>
+        </ThemedView>
+
+        <ThemedText style={styles.divider}>— or fill in manually —</ThemedText>
+
         <ThemedTextInput
           placeholder="Book Title"
           value={query}
@@ -195,7 +263,6 @@ export default function ModalScreen() {
           value={author}
           onChangeText={setAuthor}
           style={styles.input}
-          autoFocus
         />
 
         <Button
@@ -351,5 +418,24 @@ const styles = StyleSheet.create({
   link: {
     marginTop: 20,
     paddingVertical: 10,
+  },
+  isbnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    marginVertical: 10,
+    gap: 8,
+  },
+  isbnInput: {
+    flex: 1,
+  },
+  isbnBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  divider: {
+    opacity: 0.4,
+    fontSize: 12,
+    marginVertical: 6,
   },
 });
