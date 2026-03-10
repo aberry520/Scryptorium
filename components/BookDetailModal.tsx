@@ -71,7 +71,10 @@ export function BookDetailModal({
     null,
   );
   const [permission, requestPermission] = useCameraPermissions();
-  const scannedRef = useRef(false); // prevent double-scan
+
+  // Single gate ref — true means camera events are fully suppressed.
+  // Only reset to false once we're ready to accept a new scan.
+  const scanLockedRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
@@ -81,7 +84,7 @@ export function BookDetailModal({
       setScannedUser(null);
       setDueDate("");
       setReturnScannedUser(null);
-      scannedRef.current = false;
+      scanLockedRef.current = false;
 
       Animated.sequence([
         Animated.delay(500),
@@ -133,7 +136,7 @@ export function BookDetailModal({
         return;
       }
     }
-    scannedRef.current = false;
+    scanLockedRef.current = false;
     setLoanStep("scanning");
   };
 
@@ -149,75 +152,14 @@ export function BookDetailModal({
         return;
       }
     }
-    scannedRef.current = false;
+    scanLockedRef.current = false;
     setLoanStep("return-scanning");
   };
 
-  // ── QR scanned during return ───────────────────────────────────────────────
-  const handleReturnBarCodeScanned = ({ data }: { data: string }) => {
-    if (scannedRef.current) return;
-    scannedRef.current = true;
-
-    try {
-      const payload: QRPayload = JSON.parse(data);
-      if (payload.type !== "bookshelf_user" || !payload.userId) {
-        Alert.alert(
-          "Invalid QR",
-          "This doesn't look like a Bookshelf user code.",
-        );
-        scannedRef.current = false;
-        return;
-      }
-      if (!borrowedLoan) {
-        Alert.alert("Error", "No active borrow record found.");
-        scannedRef.current = false;
-        return;
-      }
-      // Must match the lender
-      if (payload.userId !== borrowedLoan.lender_user_id) {
-        Alert.alert(
-          "Wrong person",
-          `This QR belongs to someone else. You need to scan ${borrowedLoan.lender_name ?? "the lender"}'s code.`,
-        );
-        scannedRef.current = false;
-        return;
-      }
-      setReturnScannedUser(payload);
-      setLoanStep("return-confirming");
-    } catch {
-      Alert.alert("Invalid QR", "Could not read this QR code.");
-      scannedRef.current = false;
-    }
-  };
-
-  // ── Confirm return ─────────────────────────────────────────────────────────
-  const confirmReturn = async () => {
-    if (!borrowedLoan || !book) return;
-    setLoanStep("returning");
-
-    try {
-      const today = new Date().toISOString().split("T")[0];
-
-      // Set return_date on the loan
-      const { error: loanError } = await supabase
-        .from("loans")
-        .update({ return_date: today })
-        .eq("id", borrowedLoan.loan_id);
-      if (loanError) throw loanError;
-
-      // Notify parent — removes from borrowedLoans map and shelf
-      onReturnRecorded(book.library_id);
-      setLoanStep("return-done");
-    } catch (e: any) {
-      Alert.alert("Error recording return", e.message);
-      setLoanStep("return-confirming");
-    }
-  };
-
-  // ── QR scanned ─────────────────────────────────────────────────────────────
+  // ── QR scanned (loan) ────────────────────────────────────────────────────
   const handleBarCodeScanned = ({ data }: { data: string }) => {
-    if (scannedRef.current) return;
-    scannedRef.current = true;
+    if (scanLockedRef.current) return;
+    scanLockedRef.current = true; // lock immediately — stays locked until explicit reset
 
     try {
       const payload: QRPayload = JSON.parse(data);
@@ -225,20 +167,105 @@ export function BookDetailModal({
         Alert.alert(
           "Invalid QR",
           "This doesn't look like a Bookshelf user code.",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                scanLockedRef.current = false;
+              },
+            },
+          ],
         );
-        scannedRef.current = false;
         return;
       }
       if (payload.userId === book.user_id) {
-        Alert.alert("That's you!", "You can't loan a book to yourself.");
-        scannedRef.current = false;
+        Alert.alert("That's you!", "You can't loan a book to yourself.", [
+          {
+            text: "OK",
+            onPress: () => {
+              scanLockedRef.current = false;
+            },
+          },
+        ]);
         return;
       }
+      // Valid — proceed (lock stays, no more scanning needed)
       setScannedUser(payload);
       setLoanStep("confirming");
     } catch {
-      Alert.alert("Invalid QR", "Could not read this QR code.");
-      scannedRef.current = false;
+      Alert.alert("Invalid QR", "Could not read this QR code.", [
+        {
+          text: "OK",
+          onPress: () => {
+            scanLockedRef.current = false;
+          },
+        },
+      ]);
+    }
+  };
+
+  // ── QR scanned (return) ──────────────────────────────────────────────────
+  const handleReturnBarCodeScanned = ({ data }: { data: string }) => {
+    if (scanLockedRef.current) return;
+    scanLockedRef.current = true; // lock immediately
+
+    try {
+      const payload: QRPayload = JSON.parse(data);
+
+      if (payload.type !== "bookshelf_user" || !payload.userId) {
+        Alert.alert(
+          "Invalid QR",
+          "This doesn't look like a Bookshelf user code.",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                scanLockedRef.current = false;
+              },
+            },
+          ],
+        );
+        return;
+      }
+      if (!borrowedLoan) {
+        Alert.alert("Error", "No active borrow record found.", [
+          {
+            text: "OK",
+            onPress: () => {
+              scanLockedRef.current = false;
+            },
+          },
+        ]);
+        return;
+      }
+      if (payload.userId !== borrowedLoan.lender_user_id) {
+        // Wrong person — alert stays up until dismissed, THEN unlock
+        Alert.alert(
+          "Wrong person",
+          `This QR belongs to someone else. You need to scan ${borrowedLoan.lender_name ?? "the lender"}'s code.`,
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                scanLockedRef.current = false;
+              },
+            },
+          ],
+        );
+        return;
+      }
+      // Correct lender — proceed, lock stays
+      setReturnScannedUser(payload);
+      setLoanStep("return-confirming");
+    } catch {
+      Alert.alert("Invalid QR", "Could not read this QR code.", [
+        {
+          text: "OK",
+          onPress: () => {
+            scanLockedRef.current = false;
+          },
+        },
+      ]);
     }
   };
 
@@ -289,7 +316,29 @@ export function BookDetailModal({
     }
   };
 
-  // ── Interior content switcher ──────────────────────────────────────────────
+  // ── Confirm return ───────────────────────────────────────────────────────
+  const confirmReturn = async () => {
+    if (!borrowedLoan || !book) return;
+    setLoanStep("returning");
+
+    try {
+      const today = new Date().toISOString().split("T")[0];
+
+      const { error: loanError } = await supabase
+        .from("loans")
+        .update({ return_date: today })
+        .eq("id", borrowedLoan.loan_id);
+      if (loanError) throw loanError;
+
+      onReturnRecorded(book.library_id);
+      setLoanStep("return-done");
+    } catch (e: any) {
+      Alert.alert("Error recording return", e.message);
+      setLoanStep("return-confirming");
+    }
+  };
+
+  // ── Interior content switcher ────────────────────────────────────────────
   const renderInterior = () => {
     // Scanner view — full book interior replaced by camera
     if (loanStep === "scanning") {
@@ -311,7 +360,10 @@ export function BookDetailModal({
           <Text style={styles.scannerPrompt}>Scan friend's library code</Text>
           <TouchableOpacity
             style={styles.scanCancelBtn}
-            onPress={() => setLoanStep("idle")}
+            onPress={() => {
+              scanLockedRef.current = false;
+              setLoanStep("idle");
+            }}
           >
             <Text style={styles.scanCancelText}>Cancel</Text>
           </TouchableOpacity>
@@ -319,7 +371,7 @@ export function BookDetailModal({
       );
     }
 
-    // Confirm screen
+    // Loan: confirm + due date
     if (loanStep === "confirming" && scannedUser) {
       // Build quick-pick options: 1 week, 2 weeks, 1 month, or clear
       const quickDates: { label: string; days: number }[] = [
@@ -334,14 +386,12 @@ export function BookDetailModal({
         setDueDate(d.toISOString().split("T")[0]);
       };
 
-      const formatDueDisplay = (iso: string) => {
-        if (!iso) return null;
-        return new Date(iso).toLocaleDateString("en-US", {
+      const formatDueDisplay = (iso: string) =>
+        new Date(iso).toLocaleDateString("en-US", {
           month: "long",
           day: "numeric",
           year: "numeric",
         });
-      };
 
       return (
         <View style={styles.confirmWrapper}>
@@ -418,7 +468,7 @@ export function BookDetailModal({
           <TouchableOpacity
             style={styles.rescanBtn}
             onPress={() => {
-              scannedRef.current = false;
+              scanLockedRef.current = false;
               setLoanStep("scanning");
             }}
           >
@@ -435,7 +485,7 @@ export function BookDetailModal({
       );
     }
 
-    // Loaning in progress
+    // Loan: in progress
     if (loanStep === "loaning") {
       return (
         <View style={styles.centeredState}>
@@ -445,7 +495,7 @@ export function BookDetailModal({
       );
     }
 
-    // Done
+    // Loan: done
     if (loanStep === "done" && scannedUser) {
       return (
         <View style={styles.centeredState}>
@@ -484,7 +534,10 @@ export function BookDetailModal({
           </Text>
           <TouchableOpacity
             style={styles.scanCancelBtn}
-            onPress={() => setLoanStep("idle")}
+            onPress={() => {
+              scanLockedRef.current = false;
+              setLoanStep("idle");
+            }}
           >
             <Text style={styles.scanCancelText}>Cancel</Text>
           </TouchableOpacity>
@@ -538,7 +591,7 @@ export function BookDetailModal({
           <TouchableOpacity
             style={styles.rescanBtn}
             onPress={() => {
-              scannedRef.current = false;
+              scanLockedRef.current = false;
               setLoanStep("return-scanning");
             }}
           >
@@ -555,7 +608,7 @@ export function BookDetailModal({
       );
     }
 
-    // Returning in progress
+    // Return: in progress
     if (loanStep === "returning") {
       return (
         <View style={styles.centeredState}>
@@ -565,7 +618,7 @@ export function BookDetailModal({
       );
     }
 
-    // Return done — modal will close via onReturnRecorded removing book from shelf
+    // Return: done
     if (loanStep === "return-done") {
       return (
         <View style={styles.centeredState}>
@@ -586,13 +639,10 @@ export function BookDetailModal({
     return (
       <Animated.View style={[styles.interiorContent, { opacity: contentAnim }]}>
         <Text style={styles.chapterMark}>❧</Text>
-
         <Text style={styles.interiorTitle} numberOfLines={3}>
           {book.title}
         </Text>
-
         <View style={styles.divider} />
-
         <Text style={styles.interiorAuthor}>{book.author}</Text>
 
         <View style={styles.metaBlock}>
@@ -607,14 +657,12 @@ export function BookDetailModal({
               <Text style={styles.loanStatusIcon}>↙</Text>
               <Text style={styles.loanStatusHeading}>BORROWED BOOK</Text>
             </View>
-
             <View style={styles.loanStatusRow}>
               <Text style={styles.metaLabel}>LENT BY</Text>
               <Text style={styles.metaValue}>
                 {borrowedLoan.lender_name ?? "Unknown"}
               </Text>
             </View>
-
             <View style={styles.loanStatusRow}>
               <Text style={styles.metaLabel}>BORROWED ON</Text>
               <Text style={styles.metaValue}>
@@ -628,7 +676,6 @@ export function BookDetailModal({
                 )}
               </Text>
             </View>
-
             <View style={styles.loanStatusRow}>
               <Text style={styles.metaLabel}>DUE BACK</Text>
               <Text
@@ -657,14 +704,12 @@ export function BookDetailModal({
               <Text style={styles.loanStatusIcon}>↗</Text>
               <Text style={styles.loanStatusHeading}>CURRENTLY LOANED OUT</Text>
             </View>
-
             <View style={styles.loanStatusRow}>
               <Text style={styles.metaLabel}>BORROWED BY</Text>
               <Text style={styles.metaValue}>
                 {activeLoan.borrower_name ?? "Unknown"}
               </Text>
             </View>
-
             <View style={styles.loanStatusRow}>
               <Text style={styles.metaLabel}>CHECKED OUT</Text>
               <Text style={styles.metaValue}>
@@ -678,7 +723,6 @@ export function BookDetailModal({
                 )}
               </Text>
             </View>
-
             <View style={styles.loanStatusRow}>
               <Text style={styles.metaLabel}>DUE BACK</Text>
               <Text
@@ -884,15 +928,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 3,
   },
-  metaValue: {
-    fontSize: 13,
-    color: "#3D2B1A",
-    fontFamily: "Georgia",
-  },
-  notesBlock: {
-    flex: 1,
-    marginBottom: 12,
-  },
+  metaValue: { fontSize: 13, color: "#3D2B1A", fontFamily: "Georgia" },
+  metaValueMuted: { color: "#B0956E", fontStyle: "italic" },
+  notesBlock: { flex: 1, marginBottom: 12 },
   notesText: {
     fontSize: 12,
     color: "#3D2B1A",
@@ -939,13 +977,8 @@ const styles = StyleSheet.create({
     color: "#8B6340",
     fontWeight: "700",
   },
-  loanStatusRow: {
-    gap: 2,
-  },
-  metaValueMuted: {
-    color: "#B0956E",
-    fontStyle: "italic",
-  },
+  loanStatusRow: { gap: 2 },
+
   actionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
