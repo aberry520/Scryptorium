@@ -45,12 +45,14 @@ export function BookSpine({
   onDelete,
   onPress,
   hidden = false,
+  loaned = false,
 }: {
   book: LibraryBook;
   colorIndex: number;
   onDelete: (libraryId: number) => Promise<void>;
   onPress: (book: LibraryBook, colorIndex: number) => void;
   hidden?: boolean;
+  loaned?: boolean;
 }) {
   const color = SPINE_COLORS[colorIndex % SPINE_COLORS.length];
   // Slightly vary heights for realism
@@ -88,7 +90,8 @@ export function BookSpine({
         {
           backgroundColor: color,
           height: spineHeight,
-          opacity: hidden ? 0 : 1,
+          opacity: hidden ? 0 : loaned ? 0.35 : 1,
+          // desaturate loaned books with a grayscale filter flag we apply via overlays below
         },
       ]}
     >
@@ -129,6 +132,16 @@ export function BookSpine({
 
       {/* Spine highlight */}
       <View style={styles.spineHighlight} />
+
+      {/* Loaned overlay — greyscale wash + "OUT" tag */}
+      {loaned && (
+        <>
+          <View style={styles.loanedOverlay} />
+          <View style={styles.loanedBadge}>
+            <Text style={styles.loanedBadgeText}>OUT</Text>
+          </View>
+        </>
+      )}
     </TouchableOpacity>
   );
 }
@@ -193,5 +206,31 @@ const styles = StyleSheet.create({
     width: 3,
     backgroundColor: "rgba(255,255,255,0.12)",
     borderRadius: 2,
+  },
+  loanedOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(20,14,10,0.55)",
+    borderRadius: 2,
+  },
+  loanedBadge: {
+    position: "absolute",
+    top: 22,
+    alignSelf: "center",
+    backgroundColor: "rgba(245,236,215,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(245,236,215,0.35)",
+    paddingHorizontal: 3,
+    paddingVertical: 2,
+    borderRadius: 1,
+  },
+  loanedBadgeText: {
+    fontSize: 6,
+    letterSpacing: 1.5,
+    color: "rgba(245,236,215,0.7)",
+    fontWeight: "700",
   },
 });

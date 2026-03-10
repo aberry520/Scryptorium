@@ -25,10 +25,20 @@ type LibraryBook = {
   book_created_at: string;
 };
 
+export type ActiveLoan = {
+  loan_id: number;
+  borrower_user_id: string;
+  borrower_name: string | null;
+  checkout_date: string;
+  due_date: string | null;
+};
+
 export default function HomeScreen() {
   const [books, setBooks] = useState<LibraryBook[]>([]);
+  const [activeLoans, setActiveLoans] = useState<Record<number, ActiveLoan>>(
+    {},
+  ); // keyed by library_id
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [selectedBook, setSelectedBook] = useState<{
     book: LibraryBook;
     colorIndex: number;
@@ -57,8 +67,51 @@ export default function HomeScreen() {
 
       if (error) throw error;
       setBooks(data || []);
+      return data || [];
     } catch (error: any) {
       Alert.alert("Error fetching library", error.message);
+      return [];
+    }
+  };
+
+  const fetchActiveLoans = async (libraryIds: number[]) => {
+    if (libraryIds.length === 0) return;
+    try {
+      // Fetch loans with no return_date (still out) for this user's library entries
+      const { data, error } = await supabase
+        .from("loans")
+        .select("id, library_id, borrower_user_id, checkout_date, due_date")
+        .in("library_id", libraryIds)
+        .is("return_date", null);
+
+      if (error) throw error;
+      if (!data || data.length === 0) return;
+
+      // Fetch borrower names from profiles
+      const borrowerIds = [...new Set(data.map((l) => l.borrower_user_id))];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .in("id", borrowerIds);
+
+      const nameMap: Record<string, string | null> = {};
+      profiles?.forEach((p) => {
+        nameMap[p.id] = p.name;
+      });
+
+      const loanMap: Record<number, ActiveLoan> = {};
+      data.forEach((l) => {
+        loanMap[l.library_id] = {
+          loan_id: l.id,
+          borrower_user_id: l.borrower_user_id,
+          borrower_name: nameMap[l.borrower_user_id] ?? null,
+          checkout_date: l.checkout_date,
+          due_date: l.due_date,
+        };
+      });
+      setActiveLoans(loanMap);
+    } catch (error: any) {
+      console.error("Error fetching loans:", error.message);
     }
   };
 
@@ -71,20 +124,25 @@ export default function HomeScreen() {
 
       if (error) throw error;
       setBooks((prev) => prev.filter((b) => b.library_id !== libraryId));
+      setActiveLoans((prev) => {
+        const next = { ...prev };
+        delete next[libraryId];
+        return next;
+      });
     } catch (error: any) {
       Alert.alert("Error removing book", error.message);
     }
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchLibraryBooks();
-    setRefreshing(false);
+  // Called from BookDetailModal after a loan is recorded so shelf updates immediately
+  const onLoanRecorded = (libraryId: number, loan: ActiveLoan) => {
+    setActiveLoans((prev) => ({ ...prev, [libraryId]: loan }));
   };
 
   useEffect(() => {
     const load = async () => {
-      await fetchLibraryBooks();
+      const books = await fetchLibraryBooks();
+      await fetchActiveLoans(books.map((b) => b.library_id));
       setLoading(false);
     };
     load();
@@ -142,12 +200,13 @@ export default function HomeScreen() {
               <BookSpine
                 key={book.library_id}
                 book={book}
-                colorIndex={books.indexOf(book)} // keep colors stable regardless of filter
+                colorIndex={books.indexOf(book)}
                 onDelete={deleteBook}
                 onPress={(b, ci) =>
                   setSelectedBook({ book: b, colorIndex: ci })
                 }
                 hidden={selectedBook?.book.library_id === book.library_id}
+                loaned={!!activeLoans[book.library_id]}
               />
             ))}
           </ScrollView>
@@ -159,7 +218,6 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Wall texture behind shelf */}
       <View style={styles.wall} />
 
       <View style={styles.footer}>
@@ -170,17 +228,20 @@ export default function HomeScreen() {
         book={selectedBook?.book ?? null}
         colorIndex={selectedBook?.colorIndex ?? 0}
         visible={selectedBook !== null}
+        activeLoan={
+          selectedBook
+            ? (activeLoans[selectedBook.book.library_id] ?? null)
+            : null
+        }
         onClose={() => setSelectedBook(null)}
+        onLoanRecorded={onLoanRecorded}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  room: {
-    flex: 1,
-    backgroundColor: "#1A1210",
-  },
+  room: { flex: 1, backgroundColor: "#1A1210" },
   wall: {
     position: "absolute",
     top: 0,
@@ -190,17 +251,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#1A1210",
     zIndex: -1,
   },
-  header: {
-    paddingTop: 64,
-    paddingHorizontal: 24,
-    paddingBottom: 16,
-    gap: 12,
-  },
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 12,
-  },
+  header: { paddingTop: 64, paddingHorizontal: 24, paddingBottom: 16, gap: 12 },
+  headerTop: { flexDirection: "row", alignItems: "baseline", gap: 12 },
   headerText: {
     fontSize: 28,
     fontWeight: "700",
@@ -208,11 +260,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontFamily: "Georgia",
   },
-  bookCount: {
-    fontSize: 14,
-    color: "#9A8A78",
-    fontStyle: "italic",
-  },
+  bookCount: { fontSize: 14, color: "#9A8A78", fontStyle: "italic" },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -224,9 +272,7 @@ const styles = StyleSheet.create({
     height: 40,
     gap: 8,
   },
-  searchIcon: {
-    fontSize: 14,
-  },
+  searchIcon: { fontSize: 14 },
   searchInput: {
     flex: 1,
     color: "#F0E6D3",
@@ -234,10 +280,7 @@ const styles = StyleSheet.create({
     fontFamily: "Georgia",
     paddingVertical: 0,
   },
-  shelfWrapper: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
+  shelfWrapper: { flex: 1, justifyContent: "flex-end" },
   spineRow: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -256,18 +299,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     borderTopColor: "#7A5230",
   },
-  shelfEdge: {
-    height: 4,
-    backgroundColor: "#8B6340",
-  },
+  shelfEdge: { height: 4, backgroundColor: "#8B6340" },
   emptyText: {
     color: "#9A8A78",
     textAlign: "center",
     marginTop: 40,
     fontStyle: "italic",
   },
-  footer: {
-    padding: 24,
-    paddingBottom: 40,
-  },
+  footer: { padding: 24, paddingBottom: 40 },
 });

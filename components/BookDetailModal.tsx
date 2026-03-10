@@ -58,16 +58,28 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const BOOK_WIDTH = SCREEN_WIDTH * 0.78;
 const BOOK_HEIGHT = SCREEN_HEIGHT * 0.62;
 
+type ActiveLoan = {
+  loan_id: number;
+  borrower_user_id: string;
+  borrower_name: string | null;
+  checkout_date: string;
+  due_date: string | null;
+};
+
 export function BookDetailModal({
   book,
   colorIndex,
   visible,
   onClose,
+  activeLoan,
+  onLoanRecorded,
 }: {
   book: LibraryBook | null;
   colorIndex: number;
   visible: boolean;
   onClose: () => void;
+  activeLoan: ActiveLoan | null;
+  onLoanRecorded: (libraryId: number, loan: ActiveLoan) => void;
 }) {
   // Cover flips open left-to-right (perspective fold on Y axis)
   const coverAnim = useRef(new Animated.Value(0)).current;
@@ -91,14 +103,6 @@ export function BookDetailModal({
       scannedRef.current = false;
 
       Animated.sequence([
-        // // Fade in backdrop first
-        // Animated.timing(backdropAnim, {
-        //   toValue: 1,
-        //   duration: 200,
-        //   useNativeDriver: true,
-        // }),
-        // Then swing cover open
-        // Pause before anything starts
         Animated.delay(500),
         Animated.timing(coverAnim, {
           toValue: 1,
@@ -129,18 +133,6 @@ export function BookDetailModal({
   const coverRotate = coverAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "-170deg"],
-  });
-
-  //   // Cover fades slightly as it opens so you see behind it
-  //   const coverOpacity = coverAnim.interpolate({
-  //     inputRange: [0, 0.6, 1],
-  //     outputRange: [1, 0.9, 0.55],
-  //   });
-
-  // Cover casts a shadow that fades as it opens
-  const shadowOpacity = coverAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.7, 0.1],
   });
 
   const addedDate = new Date(book.library_created_at).toLocaleDateString(
@@ -211,13 +203,26 @@ export function BookDetailModal({
       if (libraryError) throw libraryError;
 
       // 2. Insert loan record, with optional due_date
-      const { error: loanError } = await supabase.from("loans").insert({
-        library_id: book.library_id, // lender's library entry
-        borrower_user_id: scannedUser.userId,
-        checkout_date: today,
-        ...(dueDate ? { due_date: dueDate } : {}),
-      });
+      const { data: loanRow, error: loanError } = await supabase
+        .from("loans")
+        .insert({
+          library_id: book.library_id, // lender's library entry
+          borrower_user_id: scannedUser.userId,
+          checkout_date: today,
+          ...(dueDate ? { due_date: dueDate } : {}),
+        })
+        .select("id")
+        .single();
       if (loanError) throw loanError;
+
+      // Notify parent so shelf updates immediately
+      onLoanRecorded(book.library_id, {
+        loan_id: loanRow.id,
+        borrower_user_id: scannedUser.userId,
+        borrower_name: scannedUser.name,
+        checkout_date: today,
+        due_date: dueDate || null,
+      });
 
       setLoanStep("done");
     } catch (e: any) {
@@ -416,24 +421,76 @@ export function BookDetailModal({
           <Text style={styles.metaValue}>{addedDate}</Text>
         </View>
 
-        {book.notes ? (
-          <View style={styles.notesBlock}>
-            <Text style={styles.metaLabel}>MY NOTES</Text>
-            <Text style={styles.notesText}>{book.notes}</Text>
+        {/* Loan status block — replaces notes + loan button when out */}
+        {activeLoan ? (
+          <View style={styles.loanStatusBlock}>
+            <View style={styles.loanStatusBanner}>
+              <Text style={styles.loanStatusIcon}>↗</Text>
+              <Text style={styles.loanStatusHeading}>CURRENTLY LOANED OUT</Text>
+            </View>
+
+            <View style={styles.loanStatusRow}>
+              <Text style={styles.metaLabel}>BORROWED BY</Text>
+              <Text style={styles.metaValue}>
+                {activeLoan.borrower_name ?? "Unknown"}
+              </Text>
+            </View>
+
+            <View style={styles.loanStatusRow}>
+              <Text style={styles.metaLabel}>CHECKED OUT</Text>
+              <Text style={styles.metaValue}>
+                {new Date(activeLoan.checkout_date).toLocaleDateString(
+                  "en-US",
+                  {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  },
+                )}
+              </Text>
+            </View>
+
+            <View style={styles.loanStatusRow}>
+              <Text style={styles.metaLabel}>DUE BACK</Text>
+              <Text
+                style={[
+                  styles.metaValue,
+                  !activeLoan.due_date && styles.metaValueMuted,
+                ]}
+              >
+                {activeLoan.due_date
+                  ? new Date(activeLoan.due_date).toLocaleDateString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })
+                  : "No return date set"}
+              </Text>
+            </View>
           </View>
         ) : (
-          <View style={styles.notesBlock}>
-            <Text style={styles.metaLabel}>MY NOTES</Text>
-            <Text style={styles.notesEmpty}>No notes yet.</Text>
-          </View>
+          <>
+            {book.notes ? (
+              <View style={styles.notesBlock}>
+                <Text style={styles.metaLabel}>MY NOTES</Text>
+                <Text style={styles.notesText}>{book.notes}</Text>
+              </View>
+            ) : (
+              <View style={styles.notesBlock}>
+                <Text style={styles.metaLabel}>MY NOTES</Text>
+                <Text style={styles.notesEmpty}>No notes yet.</Text>
+              </View>
+            )}
+          </>
         )}
 
         {/* Action row */}
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.loanBtn} onPress={handleLoanPress}>
-            <Text style={styles.loanBtnText}>↗ LOAN TO FRIEND</Text>
-          </TouchableOpacity>
-
+          {!activeLoan && (
+            <TouchableOpacity style={styles.loanBtn} onPress={handleLoanPress}>
+              <Text style={styles.loanBtnText}>↗ LOAN TO FRIEND</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
             <Text style={styles.closeBtnText}>CLOSE</Text>
           </TouchableOpacity>
@@ -492,7 +549,6 @@ export function BookDetailModal({
               styles.frontCover,
               {
                 backgroundColor: spineColor,
-                // opacity: coverOpacity,
                 transform: [
                   { perspective: 1200 },
                   { translateX: -BOOK_WIDTH / 2 }, // pivot around left edge
@@ -502,16 +558,9 @@ export function BookDetailModal({
               },
             ]}
           >
-            {/* Cover shadow overlay
-            <Animated.View
-              style={[styles.coverShadow, { opacity: shadowOpacity }]}
-            /> */}
-
-            {/* Cover decoration */}
             <View style={styles.coverBorderOuter}>
               <View style={styles.coverBorderInner} />
             </View>
-
             <View style={styles.coverTextBlock}>
               <Text style={styles.coverTitle} numberOfLines={4}>
                 {book.title}
@@ -632,7 +681,41 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
 
-  // Action row at bottom of detail view
+  // ── Loan status (shown instead of notes when book is out) ──
+  loanStatusBlock: {
+    flex: 1,
+    gap: 10,
+    marginBottom: 12,
+  },
+  loanStatusBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(139,99,64,0.12)",
+    borderLeftWidth: 2,
+    borderLeftColor: "#8B6340",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 2,
+    marginBottom: 4,
+  },
+  loanStatusIcon: {
+    fontSize: 12,
+    color: "#8B6340",
+  },
+  loanStatusHeading: {
+    fontSize: 9,
+    letterSpacing: 2,
+    color: "#8B6340",
+    fontWeight: "700",
+  },
+  loanStatusRow: {
+    gap: 2,
+  },
+  metaValueMuted: {
+    color: "#B0956E",
+    fontStyle: "italic",
+  },
   actionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
