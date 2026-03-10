@@ -71,6 +71,8 @@ export function BookDetailModal({
         //   useNativeDriver: true,
         // }),
         // Then swing cover open
+        // Pause before anything starts
+        Animated.delay(500),
         Animated.timing(coverAnim, {
           toValue: 1,
           duration: 800,
@@ -217,10 +219,10 @@ export function BookDetailModal({
               },
             ]}
           >
-            {/* Cover shadow overlay */}
+            {/* Cover shadow overlay
             <Animated.View
               style={[styles.coverShadow, { opacity: shadowOpacity }]}
-            />
+            /> */}
 
             {/* Cover decoration */}
             <View style={styles.coverBorderOuter}>
