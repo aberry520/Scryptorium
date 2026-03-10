@@ -35,10 +35,6 @@ books to friends, and always know **who currently has each book**.
 - Books displayed as **spines on a shelf**
 - Designed to recreate the feeling of browsing a real library
 
-### 🔄 Refreshable Library
-
-- Pull to refresh your library instantly
-
 ---
 
 # 🏛 Name Inspiration
@@ -92,9 +88,3 @@ Planned improvements include:
 - 🔎 Library search
 - 📊 Reading statistics
 - ☁️ Multi-device sync
-
----
-
-# 📜 License
-
-MIT License
