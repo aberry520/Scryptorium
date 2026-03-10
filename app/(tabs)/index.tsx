@@ -65,9 +65,9 @@ export default function HomeScreen() {
   const deleteBook = async (libraryId: number) => {
     try {
       const { error } = await supabase
-        .from("user_library_books")
+        .from("library")
         .delete()
-        .eq("library_id", libraryId);
+        .eq("id", libraryId);
 
       if (error) throw error;
       setBooks((prev) => prev.filter((b) => b.library_id !== libraryId));
