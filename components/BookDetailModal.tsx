@@ -83,7 +83,6 @@ export function BookDetailModal({
 }) {
   // Cover flips open left-to-right (perspective fold on Y axis)
   const coverAnim = useRef(new Animated.Value(0)).current;
-  const backdropAnim = useRef(new Animated.Value(0)).current;
   const contentAnim = useRef(new Animated.Value(0)).current;
 
   const [loanStep, setLoanStep] = useState<LoanStep>("idle");
@@ -95,7 +94,6 @@ export function BookDetailModal({
   useEffect(() => {
     if (visible) {
       coverAnim.setValue(0);
-      backdropAnim.setValue(0);
       contentAnim.setValue(0);
       setLoanStep("idle");
       setScannedUser(null);
@@ -120,7 +118,6 @@ export function BookDetailModal({
     } else {
       // Snap everything back instantly when closing
       coverAnim.setValue(0);
-      backdropAnim.setValue(0);
       contentAnim.setValue(0);
     }
   }, [visible]);
@@ -507,15 +504,6 @@ export function BookDetailModal({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      {/* Backdrop */}
-      <Animated.View style={[styles.backdrop, { opacity: backdropAnim }]}>
-        <TouchableOpacity
-          style={StyleSheet.absoluteFill}
-          onPress={loanStep === "idle" ? onClose : undefined}
-          activeOpacity={1}
-        />
-      </Animated.View>
-
       <View style={styles.centreWrapper} pointerEvents="box-none">
         <View
           style={[
@@ -587,10 +575,6 @@ const CORNER = 16;
 const CORNER_W = 2.5;
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.82)",
-  },
   centreWrapper: {
     flex: 1,
     justifyContent: "center",
