@@ -1,12 +1,13 @@
 import { supabase } from "@/lib/supabase";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Button,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { BookSpine } from "@/components/BookSpine";
@@ -32,6 +33,16 @@ export default function HomeScreen() {
     book: LibraryBook;
     colorIndex: number;
   } | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredBooks = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return books;
+    return books.filter(
+      (b) =>
+        b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q),
+    );
+  }, [books, searchQuery]);
 
   const fetchLibraryBooks = async () => {
     try {
@@ -79,37 +90,59 @@ export default function HomeScreen() {
     load();
   }, []);
 
+  const isSearching = searchQuery.trim().length > 0;
+
   return (
     <View style={styles.room}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerText}>My Library</Text>
-        <Text style={styles.bookCount}>{books.length} books</Text>
+        <View style={styles.headerTop}>
+          <Text style={styles.headerText}>My Library</Text>
+          <Text style={styles.bookCount}>
+            {isSearching
+              ? `${filteredBooks.length} of ${books.length}`
+              : `${books.length} books`}
+          </Text>
+        </View>
+
+        <View style={styles.searchBar}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by title or author…"
+            placeholderTextColor="#6A5A4A"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+        </View>
       </View>
 
       {/* Bookshelf area */}
       <View style={styles.shelfWrapper}>
         {loading ? (
           <Text style={styles.emptyText}>Loading…</Text>
-        ) : books.length === 0 ? (
-          <Text style={styles.emptyText}>No books yet. Add some!</Text>
+        ) : filteredBooks.length === 0 ? (
+          <Text style={styles.emptyText}>
+            {isSearching
+              ? `No books matching "${searchQuery}"`
+              : "No books yet. Add some!"}
+          </Text>
         ) : (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={true}
-            // refreshControl={
-            //   <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            // }
             contentContainerStyle={styles.spineRow}
-            bounces={false} // disable the vertical bounce
-            overScrollMode="never" // Android only
-            scrollEventThrottle={16} // smoother scroll event handling
+            bounces={false}
+            overScrollMode="never"
+            scrollEventThrottle={16}
           >
-            {books.map((book, i) => (
+            {filteredBooks.map((book) => (
               <BookSpine
                 key={book.library_id}
                 book={book}
-                colorIndex={i}
+                colorIndex={books.indexOf(book)} // keep colors stable regardless of filter
                 onDelete={deleteBook}
                 onPress={(b, ci) =>
                   setSelectedBook({ book: b, colorIndex: ci })
@@ -161,6 +194,9 @@ const styles = StyleSheet.create({
     paddingTop: 64,
     paddingHorizontal: 24,
     paddingBottom: 16,
+    gap: 12,
+  },
+  headerTop: {
     flexDirection: "row",
     alignItems: "baseline",
     gap: 12,
@@ -176,6 +212,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#9A8A78",
     fontStyle: "italic",
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#2A1E16",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#3D2B1A",
+    paddingHorizontal: 12,
+    height: 40,
+    gap: 8,
+  },
+  searchIcon: {
+    fontSize: 14,
+  },
+  searchInput: {
+    flex: 1,
+    color: "#F0E6D3",
+    fontSize: 14,
+    fontFamily: "Georgia",
+    paddingVertical: 0,
   },
   shelfWrapper: {
     flex: 1,
