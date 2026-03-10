@@ -44,11 +44,13 @@ export function BookSpine({
   colorIndex,
   onDelete,
   onPress,
+  hidden = false,
 }: {
   book: LibraryBook;
   colorIndex: number;
   onDelete: (libraryId: number) => Promise<void>;
   onPress: (book: LibraryBook, colorIndex: number) => void;
+  hidden?: boolean;
 }) {
   const color = SPINE_COLORS[colorIndex % SPINE_COLORS.length];
   // Slightly vary heights for realism
@@ -81,7 +83,14 @@ export function BookSpine({
       onPress={() => onPress(book, colorIndex)}
       onLongPress={handleLongPress}
       delayLongPress={400}
-      style={[styles.spine, { backgroundColor: color, height: spineHeight }]}
+      style={[
+        styles.spine,
+        {
+          backgroundColor: color,
+          height: spineHeight,
+          opacity: hidden ? 0 : 1,
+        },
+      ]}
     >
       {/* Top decorative band */}
       <View

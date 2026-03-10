@@ -114,6 +114,7 @@ export default function HomeScreen() {
                 onPress={(b, ci) =>
                   setSelectedBook({ book: b, colorIndex: ci })
                 }
+                hidden={selectedBook?.book.library_id === book.library_id}
               />
             ))}
           </ScrollView>
