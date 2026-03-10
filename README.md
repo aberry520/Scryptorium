@@ -1,50 +1,100 @@
-# Welcome to your Expo app 👋
+# 📚 Scryptorium
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Scryptorium** is a minimalist book sharing and personal library app
+designed to help you **track the books you own and loan them to
+others**.
 
-## Get started
+The goal is simple: never lose track of a book again.
 
-1. Install dependencies
+With Scryptorium you can maintain a digital record of your library, lend
+books to friends, and always know **who currently has each book**.
 
-   ```bash
-   npm install
-   ```
+---
 
-2. Start the app
+# ✨ Features
 
-   ```bash
-   npx expo start
-   ```
+### 📖 Personal Library
 
-In the output, you'll find options to open the app in a
+- Add books to your personal collection
+- Store book title and author
+- View your library in a clean, simple interface
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### 🤝 Book Lending
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- Loan books to friends
+- Track who currently has a book
+- Maintain a history of your shared books
 
-## Get a fresh project
+### 🔐 User Accounts
 
-When you're ready, run:
+- Authentication powered by Supabase
+- Each user's library is private and secure
 
-```bash
-npm run reset-project
-```
+### 🧾 Simple Interface
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+- Books displayed as **spines on a shelf**
+- Designed to recreate the feeling of browsing a real library
 
-## Learn more
+### 🔄 Refreshable Library
 
-To learn more about developing your project with Expo, look at the following resources:
+- Pull to refresh your library instantly
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+---
 
-## Join the community
+# 🏛 Name Inspiration
 
-Join our community of developers creating universal apps.
+The name **Scryptorium** comes from the medieval **scriptorium**.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+> "A scriptorium was a writing room in medieval European monasteries for
+> the copying and illuminating of manuscripts by scribes. The term has
+> perhaps been over-used---only some monasteries had special rooms set
+> aside for scribes. Often they worked in the monastery library or in
+> their own rooms."
+
+--- Wikipedia
+
+Scriptoria were places where books were carefully preserved, copied, and
+shared with the world.
+
+Scryptorium aims to capture a small piece of that spirit --- a place
+where books are **kept, tracked, and shared among a community**.
+
+---
+
+# 🛠 Tech Stack
+
+## Frontend
+
+- React Native
+- Expo Router
+
+## Backend
+
+- Supabase
+- PostgreSQL
+- Row Level Security (RLS)
+
+## Authentication
+
+- Supabase Auth
+
+---
+
+# 🔮 Future Features
+
+Planned improvements include:
+
+- 👥 Borrower tracking
+- 📅 Due dates for loaned books
+- 📚 Book covers
+- ⭐ Ratings
+- 📝 Notes and highlights
+- 🔎 Library search
+- 📊 Reading statistics
+- ☁️ Multi-device sync
+
+---
+
+# 📜 License
+
+MIT License
