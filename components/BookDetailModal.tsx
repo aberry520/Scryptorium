@@ -73,14 +73,14 @@ export function BookDetailModal({
         // Then swing cover open
         Animated.timing(coverAnim, {
           toValue: 1,
-          duration: 520,
+          duration: 800,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         // Then fade in content
         Animated.timing(contentAnim, {
           toValue: 1,
-          duration: 260,
+          duration: 100,
           useNativeDriver: true,
         }),
       ]).start();
@@ -102,11 +102,11 @@ export function BookDetailModal({
     outputRange: ["0deg", "-170deg"],
   });
 
-  // Cover fades slightly as it opens so you see behind it
-  const coverOpacity = coverAnim.interpolate({
-    inputRange: [0, 0.6, 1],
-    outputRange: [1, 0.9, 0.55],
-  });
+  //   // Cover fades slightly as it opens so you see behind it
+  //   const coverOpacity = coverAnim.interpolate({
+  //     inputRange: [0, 0.6, 1],
+  //     outputRange: [1, 0.9, 0.55],
+  //   });
 
   // Cover casts a shadow that fades as it opens
   const shadowOpacity = coverAnim.interpolate({
@@ -207,7 +207,7 @@ export function BookDetailModal({
               styles.frontCover,
               {
                 backgroundColor: spineColor,
-                opacity: coverOpacity,
+                // opacity: coverOpacity,
                 transform: [
                   { perspective: 1200 },
                   { translateX: -BOOK_WIDTH / 2 }, // pivot around left edge
