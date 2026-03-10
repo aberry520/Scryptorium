@@ -107,7 +107,7 @@ export default function HomeScreen() {
           >
             {books.map((book, i) => (
               <BookSpine
-                key={book.book_id}
+                key={book.library_id}
                 book={book}
                 colorIndex={i}
                 onDelete={deleteBook}
