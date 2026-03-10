@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { BookSpine } from "@/components/BookSpine";
+import { BookDetailModal } from "@/components/BookDetailModal";
 
 type LibraryBook = {
   library_id: number;
@@ -27,6 +28,10 @@ export default function HomeScreen() {
   const [books, setBooks] = useState<LibraryBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedBook, setSelectedBook] = useState<{
+    book: LibraryBook;
+    colorIndex: number;
+  } | null>(null);
 
   const fetchLibraryBooks = async () => {
     try {
@@ -49,9 +54,9 @@ export default function HomeScreen() {
   const deleteBook = async (libraryId: number) => {
     try {
       const { error } = await supabase
-        .from("library")
+        .from("user_library_books")
         .delete()
-        .eq("id", libraryId);
+        .eq("library_id", libraryId);
 
       if (error) throw error;
       setBooks((prev) => prev.filter((b) => b.library_id !== libraryId));
@@ -106,6 +111,9 @@ export default function HomeScreen() {
                 book={book}
                 colorIndex={i}
                 onDelete={deleteBook}
+                onPress={(b, ci) =>
+                  setSelectedBook({ book: b, colorIndex: ci })
+                }
               />
             ))}
           </ScrollView>
@@ -123,6 +131,13 @@ export default function HomeScreen() {
       <View style={styles.footer}>
         <Button title="＋  Add Book" onPress={() => router.push("/modal")} />
       </View>
+
+      <BookDetailModal
+        book={selectedBook?.book ?? null}
+        colorIndex={selectedBook?.colorIndex ?? 0}
+        visible={selectedBook !== null}
+        onClose={() => setSelectedBook(null)}
+      />
     </View>
   );
 }

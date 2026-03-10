@@ -43,10 +43,12 @@ export function BookSpine({
   book,
   colorIndex,
   onDelete,
+  onPress,
 }: {
   book: LibraryBook;
   colorIndex: number;
   onDelete: (libraryId: number) => Promise<void>;
+  onPress: (book: LibraryBook, colorIndex: number) => void;
 }) {
   const color = SPINE_COLORS[colorIndex % SPINE_COLORS.length];
   // Slightly vary heights for realism
@@ -76,6 +78,7 @@ export function BookSpine({
   return (
     <TouchableOpacity
       activeOpacity={0.75}
+      onPress={() => onPress(book, colorIndex)}
       onLongPress={handleLongPress}
       delayLongPress={400}
       style={[styles.spine, { backgroundColor: color, height: spineHeight }]}
