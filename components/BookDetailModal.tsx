@@ -13,31 +13,13 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { supabase } from "@/lib/supabase";
-
-type LibraryBook = {
-  library_id: number;
-  user_id: string;
-  username: string;
-  notes: string | null;
-  library_created_at: string;
-  book_id: number;
-  title: string;
-  author: string;
-  book_created_at: string;
-};
-
-type QRPayload = {
-  type: "bookshelf_user";
-  userId: string;
-  name: string;
-};
-
-type LoanStep =
-  | "idle" // book detail view
-  | "scanning" // camera open, waiting for QR
-  | "confirming" // scanned a valid user, show confirm screen
-  | "loaning" // supabase calls in progress
-  | "done"; // success
+import {
+  LibraryBook,
+  QRPayload,
+  LoanStep,
+  ActiveLoan,
+  BorrowedLoan,
+} from "@/types";
 
 const SPINE_COLORS = [
   "#8B2E2E",
@@ -58,36 +40,36 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const BOOK_WIDTH = SCREEN_WIDTH * 0.78;
 const BOOK_HEIGHT = SCREEN_HEIGHT * 0.62;
 
-type ActiveLoan = {
-  loan_id: number;
-  borrower_user_id: string;
-  borrower_name: string | null;
-  checkout_date: string;
-  due_date: string | null;
-};
-
 export function BookDetailModal({
   book,
   colorIndex,
   visible,
   onClose,
   activeLoan,
+  borrowedLoan,
   onLoanRecorded,
+  onReturnRecorded,
 }: {
   book: LibraryBook | null;
   colorIndex: number;
   visible: boolean;
   onClose: () => void;
   activeLoan: ActiveLoan | null;
+  borrowedLoan: BorrowedLoan | null;
   onLoanRecorded: (libraryId: number, loan: ActiveLoan) => void;
+  onReturnRecorded: (borrowerLibraryId: number) => void;
 }) {
   // Cover flips open left-to-right (perspective fold on Y axis)
   const coverAnim = useRef(new Animated.Value(0)).current;
+  const backdropAnim = useRef(new Animated.Value(0)).current;
   const contentAnim = useRef(new Animated.Value(0)).current;
 
   const [loanStep, setLoanStep] = useState<LoanStep>("idle");
   const [scannedUser, setScannedUser] = useState<QRPayload | null>(null);
-  const [dueDate, setDueDate] = useState<string>(""); // "YYYY-MM-DD" or ""
+  const [dueDate, setDueDate] = useState<string>("");
+  const [returnScannedUser, setReturnScannedUser] = useState<QRPayload | null>(
+    null,
+  );
   const [permission, requestPermission] = useCameraPermissions();
   const scannedRef = useRef(false); // prevent double-scan
 
@@ -98,6 +80,7 @@ export function BookDetailModal({
       setLoanStep("idle");
       setScannedUser(null);
       setDueDate("");
+      setReturnScannedUser(null);
       scannedRef.current = false;
 
       Animated.sequence([
@@ -118,6 +101,7 @@ export function BookDetailModal({
     } else {
       // Snap everything back instantly when closing
       coverAnim.setValue(0);
+      backdropAnim.setValue(0);
       contentAnim.setValue(0);
     }
   }, [visible]);
@@ -151,6 +135,83 @@ export function BookDetailModal({
     }
     scannedRef.current = false;
     setLoanStep("scanning");
+  };
+
+  // ── Start return flow ──────────────────────────────────────────────────────
+  const handleReturnPress = async () => {
+    if (!permission?.granted) {
+      const { granted } = await requestPermission();
+      if (!granted) {
+        Alert.alert(
+          "Camera required",
+          "Please allow camera access to scan the lender's QR code.",
+        );
+        return;
+      }
+    }
+    scannedRef.current = false;
+    setLoanStep("return-scanning");
+  };
+
+  // ── QR scanned during return ───────────────────────────────────────────────
+  const handleReturnBarCodeScanned = ({ data }: { data: string }) => {
+    if (scannedRef.current) return;
+    scannedRef.current = true;
+
+    try {
+      const payload: QRPayload = JSON.parse(data);
+      if (payload.type !== "bookshelf_user" || !payload.userId) {
+        Alert.alert(
+          "Invalid QR",
+          "This doesn't look like a Bookshelf user code.",
+        );
+        scannedRef.current = false;
+        return;
+      }
+      if (!borrowedLoan) {
+        Alert.alert("Error", "No active borrow record found.");
+        scannedRef.current = false;
+        return;
+      }
+      // Must match the lender
+      if (payload.userId !== borrowedLoan.lender_user_id) {
+        Alert.alert(
+          "Wrong person",
+          `This QR belongs to someone else. You need to scan ${borrowedLoan.lender_name ?? "the lender"}'s code.`,
+        );
+        scannedRef.current = false;
+        return;
+      }
+      setReturnScannedUser(payload);
+      setLoanStep("return-confirming");
+    } catch {
+      Alert.alert("Invalid QR", "Could not read this QR code.");
+      scannedRef.current = false;
+    }
+  };
+
+  // ── Confirm return ─────────────────────────────────────────────────────────
+  const confirmReturn = async () => {
+    if (!borrowedLoan || !book) return;
+    setLoanStep("returning");
+
+    try {
+      const today = new Date().toISOString().split("T")[0];
+
+      // Set return_date on the loan
+      const { error: loanError } = await supabase
+        .from("loans")
+        .update({ return_date: today })
+        .eq("id", borrowedLoan.loan_id);
+      if (loanError) throw loanError;
+
+      // Notify parent — removes from borrowedLoans map and shelf
+      onReturnRecorded(book.library_id);
+      setLoanStep("return-done");
+    } catch (e: any) {
+      Alert.alert("Error recording return", e.message);
+      setLoanStep("return-confirming");
+    }
   };
 
   // ── QR scanned ─────────────────────────────────────────────────────────────
@@ -400,6 +461,127 @@ export function BookDetailModal({
       );
     }
 
+    // ── Return flow ────────────────────────────────────────────────────────
+
+    // Return: scan lender QR
+    if (loanStep === "return-scanning") {
+      return (
+        <View style={styles.scannerWrapper}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            onBarcodeScanned={handleReturnBarCodeScanned}
+            barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+          />
+          <View style={styles.scannerOverlay}>
+            <View style={styles.scannerCornerTL} />
+            <View style={styles.scannerCornerTR} />
+            <View style={styles.scannerCornerBL} />
+            <View style={styles.scannerCornerBR} />
+          </View>
+          <Text style={styles.scannerPrompt}>
+            Scan {borrowedLoan?.lender_name ?? "the lender"}'s library code
+          </Text>
+          <TouchableOpacity
+            style={styles.scanCancelBtn}
+            onPress={() => setLoanStep("idle")}
+          >
+            <Text style={styles.scanCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Return: confirm screen
+    if (loanStep === "return-confirming" && returnScannedUser && borrowedLoan) {
+      return (
+        <View style={styles.confirmWrapper}>
+          <Text style={styles.chapterMark}>↩</Text>
+          <Text style={styles.confirmHeading}>Return this book?</Text>
+
+          <View style={styles.confirmBookRow}>
+            <Text style={styles.confirmBookTitle} numberOfLines={2}>
+              {book.title}
+            </Text>
+            <Text style={styles.confirmBookAuthor}>{book.author}</Text>
+          </View>
+
+          <View style={styles.confirmArrow}>
+            <Text style={styles.confirmArrowText}>↓</Text>
+            <Text style={styles.confirmToLabel}>BACK TO</Text>
+          </View>
+
+          <View style={styles.confirmFriendRow}>
+            <Text style={styles.confirmFriendName}>
+              {returnScannedUser.name}
+            </Text>
+          </View>
+
+          <View style={styles.returnMetaRow}>
+            <Text style={styles.metaLabel}>BORROWED ON</Text>
+            <Text style={styles.metaValue}>
+              {new Date(borrowedLoan.checkout_date).toLocaleDateString(
+                "en-US",
+                {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                },
+              )}
+            </Text>
+          </View>
+
+          <TouchableOpacity style={styles.confirmBtn} onPress={confirmReturn}>
+            <Text style={styles.confirmBtnText}>CONFIRM RETURN</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.rescanBtn}
+            onPress={() => {
+              scannedRef.current = false;
+              setLoanStep("return-scanning");
+            }}
+          >
+            <Text style={styles.rescanText}>Scan again</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.closeBtnSmall}
+            onPress={() => setLoanStep("idle")}
+          >
+            <Text style={styles.closeBtnText}>← Back</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Returning in progress
+    if (loanStep === "returning") {
+      return (
+        <View style={styles.centeredState}>
+          <ActivityIndicator color="#8B6340" size="large" />
+          <Text style={styles.stateText}>Recording return…</Text>
+        </View>
+      );
+    }
+
+    // Return done — modal will close via onReturnRecorded removing book from shelf
+    if (loanStep === "return-done") {
+      return (
+        <View style={styles.centeredState}>
+          <Text style={styles.doneEmoji}>↩</Text>
+          <Text style={styles.doneHeading}>Returned!</Text>
+          <Text style={styles.doneSubtext}>
+            {book.title} has been returned to{" "}
+            {returnScannedUser?.name ?? "the lender"}.
+          </Text>
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+            <Text style={styles.closeBtnText}>CLOSE</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     // Default: book detail
     return (
       <Animated.View style={[styles.interiorContent, { opacity: contentAnim }]}>
@@ -418,8 +600,58 @@ export function BookDetailModal({
           <Text style={styles.metaValue}>{addedDate}</Text>
         </View>
 
-        {/* Loan status block — replaces notes + loan button when out */}
-        {activeLoan ? (
+        {/* Borrowed status — takes priority */}
+        {borrowedLoan ? (
+          <View style={styles.loanStatusBlock}>
+            <View style={[styles.loanStatusBanner, styles.borrowedBanner]}>
+              <Text style={styles.loanStatusIcon}>↙</Text>
+              <Text style={styles.loanStatusHeading}>BORROWED BOOK</Text>
+            </View>
+
+            <View style={styles.loanStatusRow}>
+              <Text style={styles.metaLabel}>LENT BY</Text>
+              <Text style={styles.metaValue}>
+                {borrowedLoan.lender_name ?? "Unknown"}
+              </Text>
+            </View>
+
+            <View style={styles.loanStatusRow}>
+              <Text style={styles.metaLabel}>BORROWED ON</Text>
+              <Text style={styles.metaValue}>
+                {new Date(borrowedLoan.checkout_date).toLocaleDateString(
+                  "en-US",
+                  {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  },
+                )}
+              </Text>
+            </View>
+
+            <View style={styles.loanStatusRow}>
+              <Text style={styles.metaLabel}>DUE BACK</Text>
+              <Text
+                style={[
+                  styles.metaValue,
+                  !borrowedLoan.due_date && styles.metaValueMuted,
+                ]}
+              >
+                {borrowedLoan.due_date
+                  ? new Date(borrowedLoan.due_date).toLocaleDateString(
+                      "en-US",
+                      {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      },
+                    )
+                  : "No return date set"}
+              </Text>
+            </View>
+          </View>
+        ) : activeLoan ? (
+          /* Loaned out status */
           <View style={styles.loanStatusBlock}>
             <View style={styles.loanStatusBanner}>
               <Text style={styles.loanStatusIcon}>↗</Text>
@@ -466,6 +698,7 @@ export function BookDetailModal({
             </View>
           </View>
         ) : (
+          /* Normal: show notes */
           <>
             {book.notes ? (
               <View style={styles.notesBlock}>
@@ -483,11 +716,20 @@ export function BookDetailModal({
 
         {/* Action row */}
         <View style={styles.actionRow}>
-          {!activeLoan && (
+          {borrowedLoan ? (
+            /* Borrowed: only action is to return */
+            <TouchableOpacity
+              style={styles.returnBtn}
+              onPress={handleReturnPress}
+            >
+              <Text style={styles.returnBtnText}>↩ RETURN TO LENDER</Text>
+            </TouchableOpacity>
+          ) : !activeLoan ? (
+            /* Owned and available: can loan out */
             <TouchableOpacity style={styles.loanBtn} onPress={handleLoanPress}>
               <Text style={styles.loanBtnText}>↗ LOAN TO FRIEND</Text>
             </TouchableOpacity>
-          )}
+          ) : null}
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
             <Text style={styles.closeBtnText}>CLOSE</Text>
           </TouchableOpacity>
@@ -683,6 +925,10 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     marginBottom: 4,
   },
+  borrowedBanner: {
+    backgroundColor: "rgba(46,107,69,0.12)",
+    borderLeftColor: "#2E6B45",
+  },
   loanStatusIcon: {
     fontSize: 12,
     color: "#8B6340",
@@ -720,6 +966,25 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     color: "#F5ECD7",
     fontWeight: "700",
+  },
+  returnBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#2E6B45",
+    backgroundColor: "#2E6B45",
+    paddingVertical: 8,
+    borderRadius: 2,
+    alignItems: "center",
+  },
+  returnBtnText: {
+    fontSize: 10,
+    letterSpacing: 1.5,
+    color: "#F5ECD7",
+    fontWeight: "700",
+  },
+  returnMetaRow: {
+    gap: 2,
+    marginBottom: 8,
   },
   closeBtn: {
     borderWidth: 1,

@@ -6,18 +6,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { LibraryBook } from "@/types";
 
-type LibraryBook = {
-  library_id: number;
-  user_id: string;
-  username: string;
-  notes: string | null;
-  library_created_at: string;
-  book_id: number;
-  title: string;
-  author: string;
-  book_created_at: string;
-};
+
 
 // A warm, varied palette of book spine colors
 const SPINE_COLORS = [
@@ -46,6 +37,7 @@ export function BookSpine({
   onPress,
   hidden = false,
   loaned = false,
+  borrowed = false,
 }: {
   book: LibraryBook;
   colorIndex: number;
@@ -53,6 +45,7 @@ export function BookSpine({
   onPress: (book: LibraryBook, colorIndex: number) => void;
   hidden?: boolean;
   loaned?: boolean;
+  borrowed?: boolean;
 }) {
   const color = SPINE_COLORS[colorIndex % SPINE_COLORS.length];
   // Slightly vary heights for realism
@@ -90,8 +83,7 @@ export function BookSpine({
         {
           backgroundColor: color,
           height: spineHeight,
-          opacity: hidden ? 0 : loaned ? 0.35 : 1,
-          // desaturate loaned books with a grayscale filter flag we apply via overlays below
+          opacity: hidden ? 0 : loaned || borrowed ? 0.45 : 1,
         },
       ]}
     >
@@ -133,12 +125,14 @@ export function BookSpine({
       {/* Spine highlight */}
       <View style={styles.spineHighlight} />
 
-      {/* Loaned overlay — greyscale wash + "OUT" tag */}
-      {loaned && (
+      {/* Loaned/borrowed overlay */}
+      {(loaned || borrowed) && (
         <>
           <View style={styles.loanedOverlay} />
-          <View style={styles.loanedBadge}>
-            <Text style={styles.loanedBadgeText}>OUT</Text>
+          <View style={[styles.loanedBadge, borrowed && styles.borrowedBadge]}>
+            <Text style={styles.loanedBadgeText}>
+              {borrowed ? "IN" : "OUT"}
+            </Text>
           </View>
         </>
       )}
@@ -226,6 +220,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
     paddingVertical: 2,
     borderRadius: 1,
+  },
+  borrowedBadge: {
+    backgroundColor: "rgba(46,107,69,0.35)",
+    borderColor: "rgba(46,200,100,0.45)",
   },
   loanedBadgeText: {
     fontSize: 6,

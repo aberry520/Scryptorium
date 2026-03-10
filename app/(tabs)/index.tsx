@@ -12,32 +12,17 @@ import {
 } from "react-native";
 import { BookSpine } from "@/components/BookSpine";
 import { BookDetailModal } from "@/components/BookDetailModal";
-
-type LibraryBook = {
-  library_id: number;
-  user_id: string;
-  username: string;
-  notes: string | null;
-  library_created_at: string;
-  book_id: number;
-  title: string;
-  author: string;
-  book_created_at: string;
-};
-
-export type ActiveLoan = {
-  loan_id: number;
-  borrower_user_id: string;
-  borrower_name: string | null;
-  checkout_date: string;
-  due_date: string | null;
-};
+import { LibraryBook, ActiveLoan, BorrowedLoan } from "@/types";
 
 export default function HomeScreen() {
   const [books, setBooks] = useState<LibraryBook[]>([]);
+  // keyed by this user's library_id
   const [activeLoans, setActiveLoans] = useState<Record<number, ActiveLoan>>(
     {},
-  ); // keyed by library_id
+  );
+  const [borrowedLoans, setBorrowedLoans] = useState<
+    Record<number, BorrowedLoan>
+  >({});
   const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState<{
     book: LibraryBook;
@@ -67,13 +52,14 @@ export default function HomeScreen() {
 
       if (error) throw error;
       setBooks(data || []);
-      return data || [];
+      return { user, books: data || [] };
     } catch (error: any) {
       Alert.alert("Error fetching library", error.message);
-      return [];
+      return null;
     }
   };
 
+  // Loans the user has given out (they are the lender)
   const fetchActiveLoans = async (libraryIds: number[]) => {
     if (libraryIds.length === 0) return;
     try {
@@ -111,7 +97,148 @@ export default function HomeScreen() {
       });
       setActiveLoans(loanMap);
     } catch (error: any) {
-      console.error("Error fetching loans:", error.message);
+      console.error("Error fetching active loans:", error.message);
+    }
+  };
+
+  // Loans the user has received (they are the borrower)
+  const fetchBorrowedLoans = async (userId: string, libraryIds: number[]) => {
+    if (libraryIds.length === 0) return;
+    try {
+      // Find loans where this user is the borrower AND the library entry
+      // is one of their own library rows (the one created when the book was loaned to them)
+      const { data, error } = await supabase
+        .from("loans")
+        .select("id, library_id, borrower_user_id, checkout_date, due_date")
+        .eq("borrower_user_id", userId)
+        .in("library_id", libraryIds) // will not match — lender's library_id
+        .is("return_date", null);
+
+      // The above won't work directly because library_id is the LENDER's entry.
+      // Instead, query all active loans where this user is borrower, then cross-ref.
+      const { data: borrowedData, error: borrowedError } = await supabase
+        .from("loans")
+        .select("id, library_id, borrower_user_id, checkout_date, due_date")
+        .eq("borrower_user_id", userId)
+        .is("return_date", null);
+
+      if (borrowedError) throw borrowedError;
+      if (!borrowedData || borrowedData.length === 0) return;
+
+      // For each borrowed loan, get the lender's user_id via library table
+      const lenderLibraryIds = borrowedData.map((l) => l.library_id);
+      const { data: lenderEntries } = await supabase
+        .from("library")
+        .select("id, user_id")
+        .in("id", lenderLibraryIds);
+
+      const lenderUserIds = [
+        ...new Set(lenderEntries?.map((e) => e.user_id) ?? []),
+      ];
+      const { data: lenderProfiles } = await supabase
+        .from("profiles")
+        .select("id, name")
+        .in("id", lenderUserIds);
+
+      const nameMap: Record<string, string | null> = {};
+      lenderProfiles?.forEach((p) => {
+        nameMap[p.id] = p.name;
+      });
+
+      const lenderMap: Record<number, string> = {}; // library_id → user_id
+      lenderEntries?.forEach((e) => {
+        lenderMap[e.id] = e.user_id;
+      });
+
+      // Map borrowed loans to the borrower's own library_id
+      // The borrower's library entry was created during loan — find by book matching
+      // We store by the borrower's library_id for easy lookup from the shelf
+      const borrowMap: Record<number, BorrowedLoan> = {};
+      borrowedData.forEach((l) => {
+        const lenderUserId = lenderMap[l.library_id];
+        // Find the borrower's own library entry for this loan
+        // We use the loan_id as a fallback key mapped to the library entry
+        // For now, key by the borrower's library_id found in their books list
+        // We'll do a secondary lookup: find the library entry created for the borrower
+        // that matches. Since we always create a new row, we use loan.id as unique ref.
+        // We'll store temporarily and reconcile below.
+        borrowMap[l.library_id] = {
+          loan_id: l.id,
+          lender_library_id: l.library_id,
+          lender_user_id: lenderUserId ?? "",
+          lender_name: lenderUserId ? (nameMap[lenderUserId] ?? null) : null,
+          checkout_date: l.checkout_date,
+          due_date: l.due_date,
+        };
+      });
+
+      // Now reconcile: we need to find the borrower's library_id for each loan.
+      // The borrower's library entry was created right before the loan insert.
+      // We can find it by: library.user_id = currentUser, book_id matches, created
+      // around the same time. Best approach: store loan_id on library, but since
+      // we don't have that column, we fetch all of the borrower's library entries
+      // for the relevant books and match by proximity to checkout_date.
+      // Simpler: the borrowerData loan.library_id IS the lender's library_id —
+      // map by lender's library_id and let the modal use it for the return scan.
+      // The spine keying is by the borrower's library_id so we need to find that.
+      // Query: library entries for this user that were created on/after checkout dates.
+      const bookIdsInLoans = new Set(
+        (lenderEntries ?? []).map(() => null), // we don't have book_id here yet
+      );
+
+      // Fetch lender library entries to get book_ids
+      const { data: lenderLibDetails } = await supabase
+        .from("library")
+        .select("id, book_id, user_id")
+        .in("id", lenderLibraryIds);
+
+      // Build lender libraryId → book_id map
+      const lenderBookMap: Record<number, number> = {};
+      lenderLibDetails?.forEach((e) => {
+        lenderBookMap[e.id] = e.book_id;
+      });
+
+      // Now find the borrower's library entries for those book_ids
+      const relevantBookIds = Object.values(lenderBookMap);
+      if (relevantBookIds.length === 0) return;
+
+      const { data: borrowerLibEntries } = await supabase
+        .from("library")
+        .select("id, book_id, created_at")
+        .eq("user_id", userId)
+        .in("book_id", relevantBookIds);
+
+      // Match borrower library entry to loan by book_id + closest created_at to checkout
+      const finalBorrowMap: Record<number, BorrowedLoan> = {};
+      borrowedData.forEach((loan) => {
+        const bookId = lenderBookMap[loan.library_id];
+        const borrowerEntry = borrowerLibEntries
+          ?.filter((e) => e.book_id === bookId)
+          .sort((a, b) => {
+            // Pick the entry whose created_at is closest to checkout_date
+            const checkoutMs = new Date(loan.checkout_date).getTime();
+            return (
+              Math.abs(new Date(a.created_at).getTime() - checkoutMs) -
+              Math.abs(new Date(b.created_at).getTime() - checkoutMs)
+            );
+          })[0];
+
+        if (borrowerEntry) {
+          const lenderUserId = lenderMap[loan.library_id];
+          finalBorrowMap[borrowerEntry.id] = {
+            loan_id: loan.id,
+            lender_library_id: loan.library_id,
+            lender_user_id: lenderUserId ?? "",
+            lender_name: lenderUserId ? (nameMap[lenderUserId] ?? null) : null,
+            checkout_date: loan.checkout_date,
+            due_date: loan.due_date,
+          };
+        }
+      });
+
+      setBorrowedLoans(finalBorrowMap);
+    } catch (error: any) {
+      console.error("Error fetching borrowed loans:", error.message);
     }
   };
 
@@ -125,9 +252,14 @@ export default function HomeScreen() {
       if (error) throw error;
       setBooks((prev) => prev.filter((b) => b.library_id !== libraryId));
       setActiveLoans((prev) => {
-        const next = { ...prev };
-        delete next[libraryId];
-        return next;
+        const n = { ...prev };
+        delete n[libraryId];
+        return n;
+      });
+      setBorrowedLoans((prev) => {
+        const n = { ...prev };
+        delete n[libraryId];
+        return n;
       });
     } catch (error: any) {
       Alert.alert("Error removing book", error.message);
@@ -139,10 +271,29 @@ export default function HomeScreen() {
     setActiveLoans((prev) => ({ ...prev, [libraryId]: loan }));
   };
 
+  const onReturnRecorded = (borrowerLibraryId: number) => {
+    setBorrowedLoans((prev) => {
+      const n = { ...prev };
+      delete n[borrowerLibraryId];
+      return n;
+    });
+    // Also remove the book from shelf since the borrowed copy belongs to lender
+    setBooks((prev) => prev.filter((b) => b.library_id !== borrowerLibraryId));
+  };
+
   useEffect(() => {
     const load = async () => {
-      const books = await fetchLibraryBooks();
-      await fetchActiveLoans(books.map((b) => b.library_id));
+      const result = await fetchLibraryBooks();
+      if (!result) {
+        setLoading(false);
+        return;
+      }
+      const { user, books } = result;
+      const libraryIds = books.map((b) => b.library_id);
+      await Promise.all([
+        fetchActiveLoans(libraryIds),
+        fetchBorrowedLoans(user.id, libraryIds),
+      ]);
       setLoading(false);
     };
     load();
@@ -207,6 +358,7 @@ export default function HomeScreen() {
                 }
                 hidden={selectedBook?.book.library_id === book.library_id}
                 loaned={!!activeLoans[book.library_id]}
+                borrowed={!!borrowedLoans[book.library_id]}
               />
             ))}
           </ScrollView>
@@ -233,8 +385,14 @@ export default function HomeScreen() {
             ? (activeLoans[selectedBook.book.library_id] ?? null)
             : null
         }
+        borrowedLoan={
+          selectedBook
+            ? (borrowedLoans[selectedBook.book.library_id] ?? null)
+            : null
+        }
         onClose={() => setSelectedBook(null)}
         onLoanRecorded={onLoanRecorded}
+        onReturnRecorded={onReturnRecorded}
       />
     </View>
   );

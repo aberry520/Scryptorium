@@ -13,15 +13,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedTextInput } from "@/components/themed-text-input";
 import { ThemedView } from "@/components/themed-view";
 import { supabase } from "@/lib/supabase";
-
-type Book = {
-  id: number;
-  title: string;
-  author: string;
-  created_at: string;
-};
-
-type Mode = "search" | "confirm-existing" | "create-new";
+import { Mode, Book } from "@/types";
 
 export default function ModalScreen() {
   const [query, setQuery] = useState("");

@@ -14,13 +14,7 @@ import { ThemedText } from "@/components/themed-text";
 import { LogoutButton } from "@/components/logout-button";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
-
-// QR payload schema — scanners decode this to identify the recipient user
-type QRPayload = {
-  type: "bookshelf_user";
-  userId: string;
-  name: string;
-};
+import { QRPayload } from "@/types";
 
 export default function ProfileScreen() {
   const { session } = useAuth();
