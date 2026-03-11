@@ -8,8 +8,6 @@ import {
 } from "react-native";
 import { LibraryBook } from "@/types";
 
-
-
 // A warm, varied palette of book spine colors
 const SPINE_COLORS = [
   "#8B2E2E", // deep red
@@ -41,7 +39,7 @@ export function BookSpine({
 }: {
   book: LibraryBook;
   colorIndex: number;
-  onDelete: (libraryId: number) => Promise<void>;
+  onDelete: (libraryId: string) => Promise<void>;
   onPress: (book: LibraryBook, colorIndex: number) => void;
   hidden?: boolean;
   loaned?: boolean;
@@ -49,10 +47,10 @@ export function BookSpine({
 }) {
   const color = SPINE_COLORS[colorIndex % SPINE_COLORS.length];
   // Slightly vary heights for realism
-  const heightVariance = ((book.book_id * 37) % 60) - 20;
+  // const heightVariance = ((book.book_id * 37) % 60) - 20;
   const spineHeight = Math.min(
     SHELF_HEIGHT - 40,
-    Math.max(SHELF_HEIGHT - 120, SHELF_HEIGHT - 60 + heightVariance),
+    Math.max(SHELF_HEIGHT - 120, SHELF_HEIGHT - 60),
   );
 
   const textWidth = SHELF_HEIGHT - 20;

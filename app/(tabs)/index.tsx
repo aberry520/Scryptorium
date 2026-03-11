@@ -17,11 +17,11 @@ import { LibraryBook, ActiveLoan, BorrowedLoan } from "@/types";
 export default function HomeScreen() {
   const [books, setBooks] = useState<LibraryBook[]>([]);
   // keyed by this user's library_id
-  const [activeLoans, setActiveLoans] = useState<Record<number, ActiveLoan>>(
+  const [activeLoans, setActiveLoans] = useState<Record<string, ActiveLoan>>(
     {},
   );
   const [borrowedLoans, setBorrowedLoans] = useState<
-    Record<number, BorrowedLoan>
+    Record<string, BorrowedLoan>
   >({});
   const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState<{
@@ -45,7 +45,7 @@ export default function HomeScreen() {
       if (!user) throw new Error("User not logged in");
 
       const { data, error } = await supabase
-        .from("user_library_books")
+        .from("user_library_books_v2")
         .select("*")
         .eq("user_id", user.id)
         .order("library_created_at", { ascending: false });
@@ -60,7 +60,7 @@ export default function HomeScreen() {
   };
 
   // Loans the user has given out (they are the lender)
-  const fetchActiveLoans = async (libraryIds: number[]) => {
+  const fetchActiveLoans = async (libraryIds: string[]) => {
     if (libraryIds.length === 0) return;
     try {
       // Fetch loans with no return_date (still out) for this user's library entries
@@ -85,7 +85,7 @@ export default function HomeScreen() {
         nameMap[p.id] = p.name;
       });
 
-      const loanMap: Record<number, ActiveLoan> = {};
+      const loanMap: Record<string, ActiveLoan> = {};
       data.forEach((l) => {
         loanMap[l.library_id] = {
           loan_id: l.id,
@@ -102,7 +102,7 @@ export default function HomeScreen() {
   };
 
   // Loans the user has received (they are the borrower)
-  const fetchBorrowedLoans = async (userId: string, libraryIds: number[]) => {
+  const fetchBorrowedLoans = async (userId: string, libraryIds: string[]) => {
     if (libraryIds.length === 0) return;
     try {
       // Find loans where this user is the borrower AND the library entry
@@ -145,7 +145,7 @@ export default function HomeScreen() {
         nameMap[p.id] = p.name;
       });
 
-      const lenderMap: Record<number, string> = {}; // library_id → user_id
+      const lenderMap: Record<string, string> = {}; // library_id → user_id
       lenderEntries?.forEach((e) => {
         lenderMap[e.id] = e.user_id;
       });
@@ -153,7 +153,7 @@ export default function HomeScreen() {
       // Map borrowed loans to the borrower's own library_id
       // The borrower's library entry was created during loan — find by book matching
       // We store by the borrower's library_id for easy lookup from the shelf
-      const borrowMap: Record<number, BorrowedLoan> = {};
+      const borrowMap: Record<string, BorrowedLoan> = {};
       borrowedData.forEach((l) => {
         const lenderUserId = lenderMap[l.library_id];
         // Find the borrower's own library entry for this loan
@@ -193,7 +193,7 @@ export default function HomeScreen() {
         .in("id", lenderLibraryIds);
 
       // Build lender libraryId → book_id map
-      const lenderBookMap: Record<number, number> = {};
+      const lenderBookMap: Record<string, string> = {};
       lenderLibDetails?.forEach((e) => {
         lenderBookMap[e.id] = e.book_id;
       });
@@ -209,7 +209,7 @@ export default function HomeScreen() {
         .in("book_id", relevantBookIds);
 
       // Match borrower library entry to loan by book_id + closest created_at to checkout
-      const finalBorrowMap: Record<number, BorrowedLoan> = {};
+      const finalBorrowMap: Record<string, BorrowedLoan> = {};
       borrowedData.forEach((loan) => {
         const bookId = lenderBookMap[loan.library_id];
         const borrowerEntry = borrowerLibEntries
@@ -242,7 +242,7 @@ export default function HomeScreen() {
     }
   };
 
-  const deleteBook = async (libraryId: number) => {
+  const deleteBook = async (libraryId: string) => {
     try {
       const { error } = await supabase
         .from("library")
@@ -267,11 +267,11 @@ export default function HomeScreen() {
   };
 
   // Called from BookDetailModal after a loan is recorded so shelf updates immediately
-  const onLoanRecorded = (libraryId: number, loan: ActiveLoan) => {
+  const onLoanRecorded = (libraryId: string, loan: ActiveLoan) => {
     setActiveLoans((prev) => ({ ...prev, [libraryId]: loan }));
   };
 
-  const onReturnRecorded = (borrowerLibraryId: number) => {
+  const onReturnRecorded = (borrowerLibraryId: string) => {
     setBorrowedLoans((prev) => {
       const n = { ...prev };
       delete n[borrowerLibraryId];

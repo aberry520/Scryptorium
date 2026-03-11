@@ -56,8 +56,8 @@ export function BookDetailModal({
   onClose: () => void;
   activeLoan: ActiveLoan | null;
   borrowedLoan: BorrowedLoan | null;
-  onLoanRecorded: (libraryId: number, loan: ActiveLoan) => void;
-  onReturnRecorded: (borrowerLibraryId: number) => void;
+  onLoanRecorded: (libraryId: string, loan: ActiveLoan) => void;
+  onReturnRecorded: (borrowerLibraryId: string) => void;
 }) {
   // Cover flips open left-to-right (perspective fold on Y axis)
   const coverAnim = useRef(new Animated.Value(0)).current;

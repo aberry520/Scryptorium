@@ -1,58 +1,62 @@
 export type LibraryBook = {
-  library_id: number;
+  library_id: string; // uuid
   user_id: string;
   username: string;
   notes: string | null;
   library_created_at: string;
-  book_id: number;
+  book_id: string; // uuid
   title: string;
-  author: string;
+  author: string; // combined from books_with_authors view
+  cover_url: string | null;
   book_created_at: string;
 };
 
-// Book the current user has lent to someone else (return_date IS NULL)
 export type ActiveLoan = {
-  loan_id: number;
+  loan_id: string; // uuid
   borrower_user_id: string;
   borrower_name: string | null;
   checkout_date: string;
   due_date: string | null;
 };
 
-// Book the current user has borrowed from someone else (return_date IS NULL)
 export type BorrowedLoan = {
-  loan_id: number;
-  lender_library_id: number;
+  loan_id: string; // uuid
+  lender_library_id: string; // uuid
   lender_user_id: string;
   lender_name: string | null;
   checkout_date: string;
   due_date: string | null;
 };
 
-// QR code payload encoded in each user's profile QR
 export type QRPayload = {
   type: "bookshelf_user";
   userId: string;
   name: string;
 };
 
-// Steps in the loan / return flow inside BookDetailModal
 export type LoanStep =
-  | "idle" // book detail view
-  | "scanning" // camera open for lending — waiting for borrower QR
-  | "confirming" // scanned borrower, show confirm screen
-  | "loaning" // supabase calls in progress
-  | "done" // loan success
-  | "return-scanning" // camera open for returning — waiting for lender QR
-  | "return-confirming" // scanned lender, show return confirm
-  | "returning" // return supabase calls in progress
-  | "return-done"; // return success
+  | "idle"
+  | "scanning"
+  | "confirming"
+  | "loaning"
+  | "done"
+  | "return-scanning"
+  | "return-confirming"
+  | "returning"
+  | "return-done";
 
 export type Mode = "search" | "confirm-existing" | "create-new";
 
 export type Book = {
-  id: number;
+  id: string; // uuid
   title: string;
-  author: string;
+  subtitle: string | null;
+  author: string; // combined string from books_with_authors view
+  isbn_10: string | null;
+  isbn_13: string | null;
+  published_at: string | null;
+  cover_url: string | null;
+  external_source: string | null;
+  external_id: string | null;
   created_at: string;
 };
