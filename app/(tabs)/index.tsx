@@ -45,7 +45,7 @@ export default function HomeScreen() {
       if (!user) throw new Error("User not logged in");
 
       const { data, error } = await supabase
-        .from("user_library_books")
+        .from("user_library_books_v2")
         .select("*")
         .eq("user_id", user.id)
         .order("library_created_at", { ascending: false });
