@@ -7,6 +7,7 @@ export type LibraryBook = {
   book_id: string; // uuid
   title: string;
   author: string; // combined from books_with_authors view
+  cover_url: string | null;
   book_created_at: string;
 };
 
