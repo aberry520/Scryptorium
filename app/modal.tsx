@@ -5,12 +5,15 @@ import {
   Alert,
   Button,
   FlatList,
+  Modal,
   StyleSheet,
+  Text,
   TouchableOpacity,
   View,
   TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { CameraView, useCameraPermissions } from "expo-camera";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedTextInput } from "@/components/themed-text-input";
@@ -29,6 +32,11 @@ type OpenLibraryBook = {
   cover_i?: number;
 };
 
+const CORNER = 20;
+const CORNER_W = 3;
+const VF_W = 280;
+const VF_H = 140;
+
 export default function ModalScreen() {
   const [query, setQuery] = useState("");
   const [author, setAuthor] = useState("");
@@ -37,6 +45,11 @@ export default function ModalScreen() {
   const [selectedBook, setSelectedBook] = useState<SearchResult | null>(null);
   const [mode, setMode] = useState<Mode>("search");
   const [loading, setLoading] = useState(false);
+
+  // Scanner
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const scanLockedRef = useRef(false);
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -116,35 +129,53 @@ export default function ModalScreen() {
   };
 
   const searchByIsbn = async (isbn: string) => {
+    setScannerVisible(false);
     setSearching(true);
     try {
-      const res = await fetch(
-        `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`,
-      );
-      const data = await res.json();
-      const bookData = data[`ISBN:${isbn}`];
+      const clean = isbn.replace(/[^0-9X]/gi, "");
 
-      if (!bookData) {
-        Alert.alert("Not found", "No book found for that ISBN.");
+      // Check local DB first
+      const { data: localData } = await supabase
+        .from("books_with_authors")
+        .select("*")
+        .or(`isbn_13.eq.${clean},isbn_10.eq.${clean}`)
+        .maybeSingle();
+
+      if (localData) {
+        setSelectedBook({ ...localData, source: "local" });
+        setMode("confirm-existing");
         return;
       }
 
-      const result: SearchResult = {
-        id: `ext-isbn-${isbn}`,
+      // Fall back to Open Library
+      const res = await fetch(
+        `https://openlibrary.org/api/books?bibkeys=ISBN:${clean}&format=json&jscmd=data`,
+      );
+      const data = await res.json();
+      const bookData = data[`ISBN:${clean}`];
+
+      if (!bookData) {
+        Alert.alert(
+          "Not found",
+          "No book found for that ISBN. Try searching by title.",
+        );
+        return;
+      }
+
+      setSelectedBook({
+        id: `ext-isbn-${clean}`,
         source: "external",
         title: bookData.title ?? "",
         author: bookData.authors?.[0]?.name ?? "Unknown",
         subtitle: bookData.subtitle ?? null,
-        isbn_13: isbn.length === 13 ? isbn : null,
-        isbn_10: isbn.length === 10 ? isbn : null,
+        isbn_13: clean.length === 13 ? clean : null,
+        isbn_10: clean.length === 10 ? clean : null,
         published_at: bookData.publish_date ?? null,
         cover_url: bookData.cover?.medium ?? null,
         external_source: "open_library",
-        external_id: isbn,
+        external_id: clean,
         created_at: new Date().toISOString(),
-      };
-
-      setSelectedBook(result);
+      });
       setMode("confirm-existing");
     } catch (e: any) {
       Alert.alert("Error", "ISBN lookup failed. Please try again.");
@@ -153,13 +184,46 @@ export default function ModalScreen() {
     }
   };
 
-  const handleScanPress = () => {
-    // TODO: wire up your barcode scanner here
-    // e.g. router.push("/scan") or open a camera modal
-    // On scan success, call: searchByIsbn(scannedIsbn)
-    Alert.alert("Scan ISBN", "Wire up your barcode scanner here.");
+  // ── Scanner ────────────────────────────────────────────────────────────────
+  const handleScanPress = async () => {
+    if (!permission?.granted) {
+      const { granted } = await requestPermission();
+      if (!granted) {
+        Alert.alert(
+          "Camera required",
+          "Please allow camera access to scan a barcode.",
+        );
+        return;
+      }
+    }
+    scanLockedRef.current = false;
+    setScannerVisible(true);
   };
 
+  const handleBarcodeScanned = ({ data }: { data: string }) => {
+    if (scanLockedRef.current) return;
+    scanLockedRef.current = true;
+
+    const clean = data.replace(/[^0-9X]/gi, "");
+    if (clean.length === 13 || clean.length === 10) {
+      searchByIsbn(clean);
+    } else {
+      Alert.alert(
+        "Not an ISBN",
+        "That barcode doesn't look like a book ISBN. Try the barcode on the back cover.",
+        [
+          {
+            text: "Try Again",
+            onPress: () => {
+              scanLockedRef.current = false;
+            },
+          },
+        ],
+      );
+    }
+  };
+
+  // ── Library operations ─────────────────────────────────────────────────────
   const addToLibrary = async (bookId: string) => {
     setLoading(true);
     try {
@@ -254,7 +318,6 @@ export default function ModalScreen() {
       router.replace("/");
     } catch (e: any) {
       Alert.alert("Import to Library Error:", e.message);
-      console.log(book);
       console.error("Import to Library Error:", e.message);
     } finally {
       setLoading(false);
@@ -327,15 +390,9 @@ export default function ModalScreen() {
 
   const handleConfirm = () => {
     if (!selectedBook) return;
-    if (selectedBook.source === "local") {
-      addToLibrary(selectedBook.id);
-    } else {
-      importAndAdd(selectedBook);
-    }
-  };
-
-  const handleNoMatch = () => {
-    setMode("create-new");
+    selectedBook.source === "local"
+      ? addToLibrary(selectedBook.id)
+      : importAndAdd(selectedBook);
   };
 
   const handleBack = () => {
@@ -350,13 +407,11 @@ export default function ModalScreen() {
     return (
       <ThemedView style={styles.container}>
         <ThemedText type="title">Add to Library?</ThemedText>
-
         {selectedBook.source === "external" && (
           <ThemedText style={styles.externalBadge}>
             📚 From Open Library
           </ThemedText>
         )}
-
         <ThemedView style={styles.bookCard}>
           <ThemedText type="defaultSemiBold" style={styles.cardTitle}>
             {selectedBook.title}
@@ -375,13 +430,11 @@ export default function ModalScreen() {
             </ThemedText>
           )}
         </ThemedView>
-
         <Button
           title={loading ? "Adding…" : "Add to My Library"}
           onPress={handleConfirm}
           disabled={loading}
         />
-
         <TouchableOpacity onPress={handleBack} style={styles.secondaryBtn}>
           <ThemedText type="link">← Back to search</ThemedText>
         </TouchableOpacity>
@@ -397,7 +450,6 @@ export default function ModalScreen() {
         <ThemedText style={styles.subtitle}>
           Can't find it? Fill in the details and we'll add it for everyone.
         </ThemedText>
-
         <ThemedTextInput
           placeholder="Book Title"
           value={query}
@@ -411,13 +463,11 @@ export default function ModalScreen() {
           style={styles.input}
           autoFocus
         />
-
         <Button
           title={loading ? "Adding…" : "Add to Library"}
           onPress={createAndAdd}
           disabled={loading}
         />
-
         <TouchableOpacity onPress={handleBack} style={styles.secondaryBtn}>
           <ThemedText type="link">← Back to search</ThemedText>
         </TouchableOpacity>
@@ -427,7 +477,6 @@ export default function ModalScreen() {
 
   // ── Search ─────────────────────────────────────────────────────────────────
   const localResults = results.filter((r) => r.source === "local");
-  const externalResults = results.filter((r) => r.source === "external");
 
   return (
     <ThemedView style={styles.container}>
@@ -501,7 +550,10 @@ export default function ModalScreen() {
 
       {/* Manual fallback */}
       {query.trim().length >= 2 && !searching && (
-        <TouchableOpacity onPress={handleNoMatch} style={styles.notFoundBtn}>
+        <TouchableOpacity
+          onPress={() => setMode("create-new")}
+          style={styles.notFoundBtn}
+        >
           <ThemedText type="link">
             {results.length === 0
               ? "Nothing found — add manually"
@@ -513,6 +565,57 @@ export default function ModalScreen() {
       <Link href="/" dismissTo style={styles.link}>
         <ThemedText type="link">Cancel</ThemedText>
       </Link>
+
+      {/* ── ISBN Barcode Scanner ── */}
+      <Modal
+        visible={scannerVisible}
+        animationType="slide"
+        onRequestClose={() => setScannerVisible(false)}
+        statusBarTranslucent
+      >
+        <View style={styles.scannerContainer}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            onBarcodeScanned={handleBarcodeScanned}
+            barcodeScannerSettings={{
+              barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e"],
+            }}
+          />
+
+          {/* Semi-transparent overlay outside the viewfinder */}
+          <View style={styles.overlayTop} />
+          <View style={styles.overlayBottom} />
+          <View style={[styles.overlaySide, { left: 0 }]} />
+          <View style={[styles.overlaySide, { right: 0 }]} />
+
+          {/* Corner brackets */}
+          <View style={styles.viewfinder}>
+            <View style={[styles.corner, styles.cornerTL]} />
+            <View style={[styles.corner, styles.cornerTR]} />
+            <View style={[styles.corner, styles.cornerBL]} />
+            <View style={[styles.corner, styles.cornerBR]} />
+          </View>
+
+          <Text style={styles.scanPrompt}>
+            Point at the barcode on the back cover
+          </Text>
+
+          {searching && (
+            <View style={styles.scanLookup}>
+              <ActivityIndicator color="#fff" size="large" />
+              <Text style={styles.scanLookupText}>Looking up ISBN…</Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.scanCancelBtn}
+            onPress={() => setScannerVisible(false)}
+          >
+            <Text style={styles.scanCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -603,32 +706,109 @@ const styles = StyleSheet.create({
     borderColor: "rgba(128,128,128,0.3)",
     alignItems: "center",
   },
-  cardTitle: {
-    fontSize: 18,
+  cardTitle: { fontSize: 18, textAlign: "center", marginBottom: 6 },
+  cardAuthor: { fontSize: 14, opacity: 0.65, fontStyle: "italic" },
+  cardMeta: { fontSize: 12, opacity: 0.45, marginTop: 4 },
+  externalBadge: { fontSize: 12, opacity: 0.6, marginBottom: 4 },
+  secondaryBtn: { marginTop: 20, paddingVertical: 10 },
+  link: { marginTop: 20, paddingVertical: 10 },
+
+  // ── Scanner ──
+  scannerContainer: { flex: 1, backgroundColor: "#000" },
+
+  overlayTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "50%",
+    marginBottom: VF_H / 2,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  overlayBottom: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: "50%",
+    marginTop: VF_H / 2,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  overlaySide: {
+    position: "absolute",
+    top: "50%",
+    bottom: "50%",
+    width: (400 - VF_W) / 2,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+
+  viewfinder: {
+    position: "absolute",
+    alignSelf: "center",
+    top: "50%",
+    marginTop: -(VF_H / 2),
+    width: VF_W,
+    height: VF_H,
+  },
+  corner: {
+    position: "absolute",
+    width: CORNER,
+    height: CORNER,
+    borderColor: "#fff",
+  },
+  cornerTL: {
+    top: 0,
+    left: 0,
+    borderTopWidth: CORNER_W,
+    borderLeftWidth: CORNER_W,
+  },
+  cornerTR: {
+    top: 0,
+    right: 0,
+    borderTopWidth: CORNER_W,
+    borderRightWidth: CORNER_W,
+  },
+  cornerBL: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: CORNER_W,
+    borderLeftWidth: CORNER_W,
+  },
+  cornerBR: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: CORNER_W,
+    borderRightWidth: CORNER_W,
+  },
+
+  scanPrompt: {
+    position: "absolute",
+    alignSelf: "center",
+    top: "50%",
+    marginTop: VF_H / 2 + 20,
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 13,
+    letterSpacing: 0.3,
     textAlign: "center",
-    marginBottom: 6,
   },
-  cardAuthor: {
-    fontSize: 14,
-    opacity: 0.65,
-    fontStyle: "italic",
+  scanLookup: {
+    position: "absolute",
+    alignSelf: "center",
+    top: "50%",
+    marginTop: -(VF_H / 2) - 90,
+    alignItems: "center",
+    gap: 10,
   },
-  cardMeta: {
-    fontSize: 12,
-    opacity: 0.45,
-    marginTop: 4,
-  },
-  externalBadge: {
-    fontSize: 12,
-    opacity: 0.6,
-    marginBottom: 4,
-  },
-  secondaryBtn: {
-    marginTop: 20,
+  scanLookupText: { color: "rgba(255,255,255,0.8)", fontSize: 13 },
+  scanCancelBtn: {
+    position: "absolute",
+    bottom: 56,
+    alignSelf: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.4)",
+    paddingHorizontal: 28,
     paddingVertical: 10,
+    borderRadius: 4,
   },
-  link: {
-    marginTop: 20,
-    paddingVertical: 10,
-  },
+  scanCancelText: { color: "#fff", fontSize: 14, letterSpacing: 1 },
 });
