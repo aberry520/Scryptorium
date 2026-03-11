@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1.5,
     borderBottomColor: "rgba(128,128,128,0.4)",
     paddingVertical: 4,
-    color: "inherit",
+    color: "rgba(141, 141, 141, 0.9)",
   },
   editActions: {
     flexDirection: "row",

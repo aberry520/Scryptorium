@@ -514,9 +514,7 @@ export default function ModalScreen() {
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={
             localResults.length > 0 ? (
-              <ThemedText style={styles.sectionLabel}>
-                In your database
-              </ThemedText>
+              <ThemedText style={styles.sectionLabel}>Our Books</ThemedText>
             ) : null
           }
           renderItem={({ item, index }) => {
@@ -656,6 +654,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     fontSize: 16,
+    color: "rgba(141, 141, 141, 0.9)",
   },
   scanBtn: {
     paddingLeft: 10,
