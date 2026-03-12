@@ -1,4 +1,3 @@
-import "expo-pwa/register-service-worker";
 import {
   DarkTheme,
   DefaultTheme,
