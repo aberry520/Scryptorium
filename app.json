@@ -23,7 +23,27 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "manifest": {
+        "name": "Scryptorium",
+        "short_name": "Scryptorium",
+        "start_url": ".",
+        "display": "standalone",
+        "theme_color": "#111111",
+        "background_color": "#ffffff",
+        "icons": [
+          {
+            "src": "./assets/images/icon.png",
+            "sizes": "192x192",
+            "type": "image/png"
+          },
+          {
+            "src": "./assets/images/icon.png",
+            "sizes": "512x512",
+            "type": "image/png"
+          }
+        ]
+      }
     },
     "plugins": [
       "expo-router",
