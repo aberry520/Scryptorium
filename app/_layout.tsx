@@ -48,6 +48,9 @@ function RootLayoutNav() {
       {!session && !pathname.endsWith("/confirmsignup") && (
         <Redirect href="/(auth)/login" />
       )}
+      {pathname.endsWith("/confirmsignup") && (
+        <Redirect href="/confirmsignup" />
+      )}
       {process.env.EXPO_OS === "web" && <InstallPrompt />}
       <StatusBar style="auto" />
     </ThemeProvider>
