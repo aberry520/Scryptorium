@@ -1,6 +1,7 @@
 import {
   Alert,
   Dimensions,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -56,6 +57,15 @@ export function BookSpine({
   const textWidth = SHELF_HEIGHT - 20;
 
   const handleLongPress = () => {
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        `Remove "${book.title}" from your library?`,
+      );
+      if (confirmed) {
+        onDelete(book.library_id);
+      }
+      return;
+    }
     Alert.alert(
       "Remove from Library",
       `Remove "${book.title}" from your library?`,
