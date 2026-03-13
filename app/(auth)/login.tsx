@@ -73,7 +73,7 @@ export default function LoginScreen() {
           Welcome Back
         </ThemedText>
         <ThemedText type="default" style={styles.subtitle}>
-          Log in to your account test
+          Log in to your account
         </ThemedText>
 
         <View style={styles.form}>
