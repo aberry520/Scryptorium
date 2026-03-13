@@ -1,15 +1,16 @@
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
   DarkTheme,
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
 import { Redirect, Stack } from "expo-router";
-import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import "react-native-reanimated";
 import { AuthProvider, useAuth } from "../context/AuthContext";
-import { useColorScheme } from "@/hooks/use-color-scheme";
+import InstallPrompt from "./InstallPrompt";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -43,7 +44,7 @@ function RootLayoutNav() {
       </Stack>
 
       {!session && <Redirect href="/(auth)/login" />}
-
+      <InstallPrompt />
       <StatusBar style="auto" />
     </ThemeProvider>
   );
