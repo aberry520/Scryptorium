@@ -44,7 +44,7 @@ function RootLayoutNav() {
       </Stack>
 
       {!session && <Redirect href="/(auth)/login" />}
-      <InstallPrompt />
+      {process.env.EXPO_OS === "web" && <InstallPrompt />}
       <StatusBar style="auto" />
     </ThemeProvider>
   );

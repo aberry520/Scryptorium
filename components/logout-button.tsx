@@ -1,12 +1,20 @@
-import { TouchableOpacity, StyleSheet, Alert } from "react-native";
-import { supabase } from "@/lib/supabase";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColor } from "@/hooks/use-theme-color";
+import { supabase } from "@/lib/supabase";
+import { Alert, Platform, StyleSheet, TouchableOpacity } from "react-native";
 
 export function LogoutButton() {
   const color = useThemeColor({}, "tint");
 
   const handleLogout = async () => {
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm("Are you sure you want to log out?");
+      if (confirmed) {
+        await supabase.auth.signOut();
+      }
+      return;
+    }
+
     Alert.alert("Log Out", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
       {
