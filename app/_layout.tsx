@@ -4,7 +4,7 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
-import { Redirect, Stack } from "expo-router";
+import { Redirect, Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -28,6 +28,8 @@ function RootLayoutNav() {
     }
   }, [loading]);
 
+  const pathname = usePathname();
+
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <Stack>
@@ -43,7 +45,9 @@ function RootLayoutNav() {
         />
       </Stack>
 
-      {!session && <Redirect href="/(auth)/login" />}
+      {!session && !pathname.endsWith("/confirmsignup") && (
+        <Redirect href="/(auth)/login" />
+      )}
       {process.env.EXPO_OS === "web" && <InstallPrompt />}
       <StatusBar style="auto" />
     </ThemeProvider>
