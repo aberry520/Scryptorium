@@ -1,4 +1,4 @@
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeScanner } from "html5-qrcode";
 import React, { useEffect, useRef, useState } from "react";
 import { log } from "../utils/log";
 
@@ -12,38 +12,23 @@ export default function Scanner({ onScan }: ScannerProps) {
   const [flashOn, setFlashOn] = useState(false);
 
   useEffect(() => {
-    if (!scannerRef.current) return;
+    function onScanSuccess(decodedText, decodedResult) {
+      // handle the scanned code as you like, for example:
+      //   log(`Code matched = ${decodedText}`, decodedResult);s
+      onScan({ data: decodedText });
+    }
+    function onScanFailure(error) {
+      // handle scan failure, usually better to ignore and keep scanning.
+      // for example:
+      //   log(`Code scan error = ${error}`);
+    }
 
-    const regionId = "qr5-scanner";
-    scannerRef.current.id = regionId;
-
-    html5QrcodeRef.current = new Html5Qrcode(regionId);
-
-    html5QrcodeRef.current
-      .start(
-        { facingMode: "environment" },
-        {
-          fps: 30,
-          //   qrbox: { width: 280, height: 140 },
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-          ],
-        },
-        (decodedText) => {
-          log("QR Code Scanned:", decodedText);
-          onScan({ data: decodedText });
-          html5QrcodeRef.current?.stop();
-        },
-        () => {},
-      )
-      .catch((err) => log("QR5 Start Error:", err));
-
-    return () => {
-      html5QrcodeRef.current?.stop().catch(() => {});
-    };
+    let html5QrcodeScanner = new Html5QrcodeScanner(
+      "reader",
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      /* verbose= */ false,
+    );
+    html5QrcodeScanner.render(onScanSuccess, onScanFailure);
   }, []);
 
   const toggleFlash = async () => {
@@ -65,13 +50,11 @@ export default function Scanner({ onScan }: ScannerProps) {
         width: "100%",
         height: "100%",
         position: "relative",
-        backgroundColor: "#000",
+        paddingTop: "25%",
+        backgroundColor: "#bea876dd",
       }}
     >
-      <div
-        ref={scannerRef}
-        style={{ width: "100%", height: "100%", backgroundColor: "#000" }}
-      />
+      <div id="reader" style={{ marginTop: "100" }}></div>
       <button
         onClick={toggleFlash}
         style={{
