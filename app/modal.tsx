@@ -1,3 +1,5 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useCameraPermissions } from "expo-camera";
 import { Link, router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -6,20 +8,20 @@ import {
   Button,
   FlatList,
   Modal,
+  Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
-  TextInput,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { CameraView, useCameraPermissions } from "expo-camera";
 
+import Scanner from "@/components/Scanner";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedTextInput } from "@/components/themed-text-input";
 import { ThemedView } from "@/components/themed-view";
 import { supabase } from "@/lib/supabase";
-import { Mode, Book } from "@/types";
+import { Book, Mode } from "@/types";
 
 type ResultSource = "local" | "external";
 type SearchResult = Book & { source: ResultSource };
@@ -50,8 +52,18 @@ export default function ModalScreen() {
   const [scannerVisible, setScannerVisible] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
   const scanLockedRef = useRef(false);
+  const pendingIsbnRef = useRef<string | null>(null);
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When scanner closes, run the pending ISBN lookup
+  useEffect(() => {
+    if (!scannerVisible && pendingIsbnRef.current) {
+      const isbn = pendingIsbnRef.current;
+      pendingIsbnRef.current = null;
+      doIsbnLookup(isbn);
+    }
+  }, [scannerVisible]);
 
   // Search both local DB and Open Library as user types
   useEffect(() => {
@@ -67,13 +79,11 @@ export default function ModalScreen() {
     debounceTimer.current = setTimeout(async () => {
       setSearching(true);
       try {
-        // Run local and external searches in parallel
         const [localResults, externalResults] = await Promise.all([
           searchLocal(query.trim()),
           searchOpenLibrary(query.trim()),
         ]);
 
-        // Local results first, then dedupe external against local ISBNs
         const localIds = new Set(
           localResults.map((b) => b.isbn_13 ?? b.isbn_10),
         );
@@ -128,13 +138,18 @@ export default function ModalScreen() {
     }));
   };
 
-  const searchByIsbn = async (isbn: string) => {
+  // Called by handleBarcodeScanned — just store the ISBN and close the scanner.
+  // The useEffect above will fire doIsbnLookup once scannerVisible flips to false.
+  const searchByIsbn = (isbn: string) => {
+    pendingIsbnRef.current = isbn;
     setScannerVisible(false);
+  };
+
+  const doIsbnLookup = async (isbn: string) => {
     setSearching(true);
     try {
       const clean = isbn.replace(/[^0-9X]/gi, "");
 
-      // Check local DB first
       const { data: localData } = await supabase
         .from("books_with_authors")
         .select("*")
@@ -147,7 +162,6 @@ export default function ModalScreen() {
         return;
       }
 
-      // Fall back to Open Library
       const res = await fetch(
         `https://openlibrary.org/api/books?bibkeys=ISBN:${clean}&format=json&jscmd=data`,
       );
@@ -232,10 +246,7 @@ export default function ModalScreen() {
         error: userError,
       } = await supabase.auth.getUser();
       if (userError || !user)
-        throw (
-          new Error(`userError: ${userError?.message}`) ||
-          new Error("No user logged in")
-        );
+        throw new Error(userError?.message ?? "No user logged in");
 
       const { error: libraryError } = await supabase
         .from("library")
@@ -252,7 +263,6 @@ export default function ModalScreen() {
     }
   };
 
-  // Import an external book into books_v2 then add to library
   const importAndAdd = async (book: SearchResult) => {
     setLoading(true);
     try {
@@ -261,17 +271,12 @@ export default function ModalScreen() {
         error: userError,
       } = await supabase.auth.getUser();
       if (userError || !user)
-        throw (
-          new Error(`userError: ${userError?.message}`) ||
-          new Error("No user logged in")
-        );
+        throw new Error(userError?.message ?? "No user logged in");
 
-      // Split "Frank Herbert" → first: "Frank", last: "Herbert"
       const parts = book.author.trim().split(" ");
       const firstName = parts.slice(0, -1).join(" ") || parts[0];
       const lastName = parts.length > 1 ? parts[parts.length - 1] : "";
 
-      // 1. Upsert author
       const { data: authorRow, error: authorError } = await supabase
         .from("authors")
         .upsert(
@@ -282,7 +287,6 @@ export default function ModalScreen() {
         .single();
       if (authorError) throw new Error(`authorError: ${authorError.message}`);
 
-      // 2. Insert book into books_v2
       const { data: newBook, error: bookError } = await supabase
         .from("books_v2")
         .insert({
@@ -299,7 +303,6 @@ export default function ModalScreen() {
         .single();
       if (bookError) throw new Error(`bookError: ${bookError.message} `);
 
-      // 3. Link book and author
       const { error: joinError } = await supabase.from("book_authors").insert({
         book_id: newBook.id,
         author_id: authorRow.id,
@@ -307,7 +310,6 @@ export default function ModalScreen() {
       });
       if (joinError) throw new Error(`joinError: ${joinError.message}`);
 
-      // 4. Add to library
       const { error: libraryError } = await supabase
         .from("library")
         .insert({ book_id: newBook.id, user_id: user.id });
@@ -337,10 +339,7 @@ export default function ModalScreen() {
         error: userError,
       } = await supabase.auth.getUser();
       if (userError || !user)
-        throw (
-          new Error(`userError: ${userError?.message}`) ||
-          new Error("No user logged in")
-        );
+        throw new Error(userError?.message ?? "No user logged in");
 
       const parts = author.trim().split(" ");
       const firstName = parts.slice(0, -1).join(" ") || parts[0];
@@ -485,7 +484,6 @@ export default function ModalScreen() {
           Add a Book
         </ThemedText>
 
-        {/* Search input with barcode scanner icon */}
         <View style={styles.inputRow}>
           <TextInput
             placeholder="Search by title or author…"
@@ -505,7 +503,6 @@ export default function ModalScreen() {
         {searching && <ActivityIndicator style={styles.spinner} />}
       </ThemedView>
 
-      {/* Results list with section labels */}
       {results.length > 0 && (
         <FlatList
           data={results}
@@ -546,7 +543,6 @@ export default function ModalScreen() {
         />
       )}
 
-      {/* Manual fallback */}
       {query.trim().length >= 2 && !searching && (
         <TouchableOpacity
           onPress={() => setMode("create-new")}
@@ -571,48 +567,43 @@ export default function ModalScreen() {
         onRequestClose={() => setScannerVisible(false)}
         statusBarTranslucent
       >
-        <View style={styles.scannerContainer}>
-          <CameraView
-            style={StyleSheet.absoluteFill}
-            facing="back"
-            onBarcodeScanned={handleBarcodeScanned}
-            barcodeScannerSettings={{
-              barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e"],
-            }}
-          />
+        {Platform.OS === "web" ? (
+          <Scanner onScan={handleBarcodeScanned} />
+        ) : (
+          <View style={styles.scannerContainer}>
+            <Scanner onScan={handleBarcodeScanned} />
 
-          {/* Semi-transparent overlay outside the viewfinder */}
-          <View style={styles.overlayTop} />
-          <View style={styles.overlayBottom} />
-          <View style={[styles.overlaySide, { left: 0 }]} />
-          <View style={[styles.overlaySide, { right: 0 }]} />
+            <View style={styles.overlayTop} />
+            <View style={styles.overlayBottom} />
+            <View style={[styles.overlaySide, { left: 0 }]} />
+            <View style={[styles.overlaySide, { right: 0 }]} />
 
-          {/* Corner brackets */}
-          <View style={styles.viewfinder}>
-            <View style={[styles.corner, styles.cornerTL]} />
-            <View style={[styles.corner, styles.cornerTR]} />
-            <View style={[styles.corner, styles.cornerBL]} />
-            <View style={[styles.corner, styles.cornerBR]} />
-          </View>
-
-          <Text style={styles.scanPrompt}>
-            Point at the barcode on the back cover
-          </Text>
-
-          {searching && (
-            <View style={styles.scanLookup}>
-              <ActivityIndicator color="#fff" size="large" />
-              <Text style={styles.scanLookupText}>Looking up ISBN…</Text>
+            <View style={styles.viewfinder}>
+              <View style={[styles.corner, styles.cornerTL]} />
+              <View style={[styles.corner, styles.cornerTR]} />
+              <View style={[styles.corner, styles.cornerBL]} />
+              <View style={[styles.corner, styles.cornerBR]} />
             </View>
-          )}
 
-          <TouchableOpacity
-            style={styles.scanCancelBtn}
-            onPress={() => setScannerVisible(false)}
-          >
-            <Text style={styles.scanCancelText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
+            <Text style={styles.scanPrompt}>
+              Point at the barcode on the back cover
+            </Text>
+
+            {searching && (
+              <View style={styles.scanLookup}>
+                <ActivityIndicator color="#fff" size="large" />
+                <Text style={styles.scanLookupText}>Looking up ISBN…</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.scanCancelBtn}
+              onPress={() => setScannerVisible(false)}
+            >
+              <Text style={styles.scanCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </Modal>
     </ThemedView>
   );
@@ -712,7 +703,6 @@ const styles = StyleSheet.create({
   secondaryBtn: { marginTop: 20, paddingVertical: 10 },
   link: { marginTop: 20, paddingVertical: 10 },
 
-  // ── Scanner ──
   scannerContainer: { flex: 1, backgroundColor: "#000" },
 
   overlayTop: {

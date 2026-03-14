@@ -7,10 +7,34 @@ import {
 import { Redirect, Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
-import "react-native-reanimated";
+import React, { useEffect } from "react";
+import { Text } from "react-native";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import InstallPrompt from "./InstallPrompt";
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null };
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("CAUGHT ERROR:", error.message);
+    console.error("STACK:", error.stack);
+    console.error("COMPONENT STACK:", info.componentStack);
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return <Text>Something went wrong — check console</Text>;
+    }
+    return this.props.children;
+  }
+}
 
 SplashScreen.preventAutoHideAsync();
 
@@ -59,8 +83,10 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <RootLayoutNav />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
