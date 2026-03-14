@@ -8,6 +8,7 @@ import {
   Button,
   FlatList,
   Modal,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -566,39 +567,43 @@ export default function ModalScreen() {
         onRequestClose={() => setScannerVisible(false)}
         statusBarTranslucent
       >
-        <View style={styles.scannerContainer}>
+        {Platform.OS === "web" ? (
           <Scanner onScan={handleBarcodeScanned} />
+        ) : (
+          <View style={styles.scannerContainer}>
+            <Scanner onScan={handleBarcodeScanned} />
 
-          <View style={styles.overlayTop} />
-          <View style={styles.overlayBottom} />
-          <View style={[styles.overlaySide, { left: 0 }]} />
-          <View style={[styles.overlaySide, { right: 0 }]} />
+            <View style={styles.overlayTop} />
+            <View style={styles.overlayBottom} />
+            <View style={[styles.overlaySide, { left: 0 }]} />
+            <View style={[styles.overlaySide, { right: 0 }]} />
 
-          <View style={styles.viewfinder}>
-            <View style={[styles.corner, styles.cornerTL]} />
-            <View style={[styles.corner, styles.cornerTR]} />
-            <View style={[styles.corner, styles.cornerBL]} />
-            <View style={[styles.corner, styles.cornerBR]} />
-          </View>
-
-          <Text style={styles.scanPrompt}>
-            Point at the barcode on the back cover
-          </Text>
-
-          {searching && (
-            <View style={styles.scanLookup}>
-              <ActivityIndicator color="#fff" size="large" />
-              <Text style={styles.scanLookupText}>Looking up ISBN…</Text>
+            <View style={styles.viewfinder}>
+              <View style={[styles.corner, styles.cornerTL]} />
+              <View style={[styles.corner, styles.cornerTR]} />
+              <View style={[styles.corner, styles.cornerBL]} />
+              <View style={[styles.corner, styles.cornerBR]} />
             </View>
-          )}
 
-          <TouchableOpacity
-            style={styles.scanCancelBtn}
-            onPress={() => setScannerVisible(false)}
-          >
-            <Text style={styles.scanCancelText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
+            <Text style={styles.scanPrompt}>
+              Point at the barcode on the back cover
+            </Text>
+
+            {searching && (
+              <View style={styles.scanLookup}>
+                <ActivityIndicator color="#fff" size="large" />
+                <Text style={styles.scanLookupText}>Looking up ISBN…</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.scanCancelBtn}
+              onPress={() => setScannerVisible(false)}
+            >
+              <Text style={styles.scanCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </Modal>
     </ThemedView>
   );

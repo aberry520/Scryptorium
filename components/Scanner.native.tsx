@@ -22,5 +22,5 @@ export default function Scanner({ onScan }: ScannerProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "red" },
+  container: { flex: 1, backgroundColor: "black" },
 });

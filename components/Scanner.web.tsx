@@ -1,38 +1,30 @@
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-
-import React, { useEffect, useRef } from "react";
-
+import React, { useEffect, useRef, useState } from "react";
 import { log } from "../utils/log";
 
 type ScannerProps = {
   onScan: (result: { data: string }) => void;
 };
 
-const REGION_ID = "qr5-scanner";
-
 export default function Scanner({ onScan }: ScannerProps) {
+  const scannerRef = useRef<HTMLDivElement>(null);
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
-  const onScanRef = useRef(onScan);
+  const [flashOn, setFlashOn] = useState(false);
 
   useEffect(() => {
-    onScanRef.current = onScan;
-  }, [onScan]);
+    if (!scannerRef.current) return;
 
-  useEffect(() => {
-    if (__DEV__) {
-      const timer = setTimeout(() => {
-        onScanRef.current({ data: "9780593311776" });
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-    html5QrcodeRef.current = new Html5Qrcode(REGION_ID);
+    const regionId = "qr5-scanner";
+    scannerRef.current.id = regionId;
+
+    html5QrcodeRef.current = new Html5Qrcode(regionId);
 
     html5QrcodeRef.current
       .start(
         { facingMode: "environment" },
         {
-          fps: 10,
-          qrbox: { width: 280, height: 140 },
+          fps: 30,
+          //   qrbox: { width: 280, height: 140 },
           formatsToSupport: [
             Html5QrcodeSupportedFormats.EAN_13,
             Html5QrcodeSupportedFormats.EAN_8,
@@ -41,7 +33,8 @@ export default function Scanner({ onScan }: ScannerProps) {
           ],
         },
         (decodedText) => {
-          onScanRef.current({ data: decodedText });
+          log("QR Code Scanned:", decodedText);
+          onScan({ data: decodedText });
           html5QrcodeRef.current?.stop();
         },
         () => {},
@@ -50,20 +43,55 @@ export default function Scanner({ onScan }: ScannerProps) {
 
     return () => {
       html5QrcodeRef.current?.stop().catch(() => {});
-      html5QrcodeRef.current = null; // ← clear so next mount starts fresh
     };
   }, []);
 
+  const toggleFlash = async () => {
+    const capabilities =
+      html5QrcodeRef.current?.getRunningTrackCameraCapabilities();
+    const torchFeature = capabilities?.torchFeature();
+    if (!torchFeature?.isSupported()) {
+      log("Torch not supported on this device");
+      return;
+    }
+    const current = torchFeature.value();
+    await torchFeature.apply(!current);
+    setFlashOn(!current);
+  };
+
   return (
     <div
-      id={REGION_ID}
       style={{
         width: "100%",
-
         height: "100%",
-
+        position: "relative",
         backgroundColor: "#000",
       }}
-    />
+    >
+      <div
+        ref={scannerRef}
+        style={{ width: "100%", height: "100%", backgroundColor: "#000" }}
+      />
+      <button
+        onClick={toggleFlash}
+        style={{
+          position: "absolute",
+          top: 20,
+          right: 20,
+          zIndex: 999,
+          background: flashOn
+            ? "rgba(255,255,200,0.3)"
+            : "rgba(255,255,255,0.15)",
+          border: "1px solid rgba(255,255,255,0.4)",
+          borderRadius: 8,
+          padding: "8px 14px",
+          color: "#fff",
+          fontSize: 20,
+          cursor: "pointer",
+        }}
+      >
+        {flashOn ? "🔦" : "🔦"}
+      </button>
+    </div>
   );
 }
