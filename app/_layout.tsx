@@ -45,6 +45,7 @@ export const unstable_settings = {
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const { session, loading } = useAuth();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!loading) {
@@ -52,29 +53,26 @@ function RootLayoutNav() {
     }
   }, [loading]);
 
-  const pathname = usePathname();
+  // Don't render redirects until auth state is known
+  if (loading) return null;
+
+  const isConfirmPage = pathname === "/confirmsignup";
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="confirmsignup" options={{ headerShown: false }} />
         <Stack.Screen
           name="modal"
-          options={{
-            presentation: "modal",
-            title: "Modal",
-            headerShown: false,
-          }}
+          options={{ presentation: "modal", title: "Modal", headerShown: false }}
         />
       </Stack>
 
-      {!session && !pathname.endsWith("/confirmsignup") && (
-        <Redirect href="/(auth)/login" />
-      )}
-      {pathname.endsWith("/confirmsignup") && (
-        <Redirect href="/confirmsignup" />
-      )}
+      {/* Allow the confirm page through regardless of auth state */}
+      {!isConfirmPage && !session && <Redirect href="/(auth)/login" />}
+
       {process.env.EXPO_OS === "web" && <InstallPrompt />}
       <StatusBar style="auto" />
     </ThemeProvider>

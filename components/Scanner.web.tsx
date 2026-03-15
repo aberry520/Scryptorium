@@ -59,7 +59,7 @@ export default function Scanner({ onScan }: ScannerProps) {
         onClick={toggleFlash}
         style={{
           position: "absolute",
-          top: 20,
+          bottom: 20,
           right: 20,
           zIndex: 999,
           background: flashOn
