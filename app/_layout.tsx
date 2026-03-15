@@ -53,9 +53,6 @@ function RootLayoutNav() {
     }
   }, [loading]);
 
-  // Don't render redirects until auth state is known
-  if (loading) return null;
-
   const isConfirmPage = pathname.includes("confirmsignup");
 
   return (
@@ -70,8 +67,8 @@ function RootLayoutNav() {
         />
       </Stack>
 
-      {/* Allow the confirm page through regardless of auth state */}
-      {!isConfirmPage && !session && !loading && <Redirect href="/(auth)/login" />}
+      {/* Don't redirect at all until loading is done, and never redirect from confirm page */}
+      {!loading && !session && !isConfirmPage && <Redirect href="/(auth)/login" />}
 
       {process.env.EXPO_OS === "web" && <InstallPrompt />}
       <StatusBar style="auto" />
