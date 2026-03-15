@@ -56,7 +56,7 @@ function RootLayoutNav() {
   // Don't render redirects until auth state is known
   if (loading) return null;
 
-  const isConfirmPage = pathname.startsWith("/confirmsignup");
+  const isConfirmPage = pathname.includes("confirmsignup");
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
