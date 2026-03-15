@@ -86,7 +86,13 @@ export default function LoginScreen() {
     setError("");
     setLoading(true);
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
+const { data: authData, error: authError } = await supabase.auth.signUp({
+  email,
+  password,
+  options: {
+    emailRedirectTo: "https://scryptorium.vercel.app/confirmsignup",
+  },
+});
       if (authError) { setError(authError.message); return; }
       const userId = authData.user?.id;
       if (!userId) { setError("Unable to get user ID from signup."); return; }
