@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 const COLORS = {
   tan: "#C49A7A",
@@ -62,28 +62,20 @@ export default function ConfirmSignUp() {
             ? { token_hash: tokenHash!, type: type as any }
             : { token: token!, type: type as any, email: email! }
         );
+        await supabase.auth.signOut();
 
         if (error) {
-          setStatus("error");
-          setMessage(error.message);
+          setTimeout(() => {
+            setStatus("error");
+            setMessage(error.message);
+          }, 3000);
         } else {
-          setStatus("success");
-          setMessage("Your account has been confirmed! Taking you to the app…");
-          // Wait for Supabase to fire the SIGNED_IN event before navigating,
-          // so AuthContext has a valid session before the redirect guard runs.
-          const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-            if (event === "SIGNED_IN") {
-              subscription.unsubscribe();
-              router.replace("/(tabs)");
-            }
-          });
-          // Fallback in case the event already fired before we subscribed
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            subscription.unsubscribe();
-            router.replace("/(tabs)");
-          }
+          setTimeout(() => {
+            setStatus("success");
+            setMessage("Your email has been verified and your account is ready.");
+          }, 3000);
         }
+
       } catch {
         setStatus("error");
         setMessage("An unexpected error occurred.");
@@ -108,6 +100,13 @@ export default function ConfirmSignUp() {
             <Text style={styles.emoji}>✅</Text>
             <Text style={styles.heading}>Email verified!</Text>
             <Text style={styles.body}>{message}</Text>
+            <TouchableOpacity
+              style={styles.btn}
+              onPress={() => router.replace("/(auth)/login")}
+              activeOpacity={0.82}
+            >
+              <Text style={styles.btnText}>Continue to Login</Text>
+            </TouchableOpacity>
           </>
         )}
         {status === "error" && (
@@ -116,6 +115,13 @@ export default function ConfirmSignUp() {
             <Text style={[styles.heading, styles.headingError]}>Something went wrong</Text>
             <Text style={styles.body}>{message}</Text>
             <Text style={styles.hint}>The link may have expired. Try signing up again.</Text>
+            <TouchableOpacity
+              style={styles.btn}
+              onPress={() => router.replace("/(auth)/login")}
+              activeOpacity={0.82}
+            >
+              <Text style={styles.btnText}>Back to Login</Text>
+            </TouchableOpacity>
           </>
         )}
       </View>
@@ -183,5 +189,21 @@ const styles = StyleSheet.create({
     color: "#D4B69A",
     fontSize: 16,
     marginTop: 28,
+  },
+  btn: {
+    backgroundColor: COLORS.tan,
+    borderRadius: 10,
+    paddingVertical: 13,
+    paddingHorizontal: 40,
+    alignItems: "center",
+    marginTop: 20,
+  },
+  btnText: {
+    fontFamily: serif,
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
   },
 });
