@@ -69,7 +69,20 @@ export default function ConfirmSignUp() {
         } else {
           setStatus("success");
           setMessage("Your account has been confirmed! Taking you to the app…");
-          setTimeout(() => router.replace("/(tabs)"), 2000);
+          // Wait for Supabase to fire the SIGNED_IN event before navigating,
+          // so AuthContext has a valid session before the redirect guard runs.
+          const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "SIGNED_IN") {
+              subscription.unsubscribe();
+              router.replace("/(tabs)");
+            }
+          });
+          // Fallback in case the event already fired before we subscribed
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            subscription.unsubscribe();
+            router.replace("/(tabs)");
+          }
         }
       } catch {
         setStatus("error");
