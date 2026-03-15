@@ -1,88 +1,174 @@
-import { supabase } from "@/lib/supabase"; // adjust your import path
+import { supabase } from "@/lib/supabase";
 import * as Linking from "expo-linking";
+import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 
-export default function ConfirmSignUp({ navigation }: any) {
-  const [status, setStatus] = useState<"loading" | "success" | "error">(
-    "loading",
-  );
-  const [message, setMessage] = useState<string>("Confirming your account...");
+const COLORS = {
+  tan: "#C49A7A",
+  cream: "#FAF5EE",
+  ink: "#2C1F14",
+  inkFaint: "#6B5040",
+  inkMuted: "#A08878",
+};
+
+const serif = Platform.OS === "ios" ? "Georgia" : "serif";
+
+export default function ConfirmSignUp() {
+  const router = useRouter();
+  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
+  const [message, setMessage] = useState("Confirming your account…");
 
   useEffect(() => {
-    const getInitialURL = async () => {
-      // Get the URL that opened the app
-      const url = await Linking.getInitialURL();
-      if (!url) {
-        setStatus("error");
-        setMessage("No confirmation URL found.");
-        return;
-      }
+    const confirm = async () => {
+      try {
+        let token: string | undefined;
+        let tokenHash: string | undefined;
+        let email: string | undefined;
+        let type: string = "signup";
 
-      // Parse the token and email from the URL query params
-      const { queryParams } = Linking.parse(url);
-      const token = queryParams?.token as string;
-      const email = queryParams?.email as string;
-      if (!token) {
-        setStatus("error");
-        setMessage("No confirmation token in URL.");
-        return;
-      }
-      if (!email) {
-        setStatus("error");
-        setMessage("No email found in confirmation URL.");
-        return;
-      }
+        if (Platform.OS === "web") {
+          // Supabase sends token_hash + type as query params on web
+          const params = new URLSearchParams(window.location.search);
+          tokenHash = params.get("token_hash") ?? undefined;
+          type = params.get("type") ?? "signup";
+        } else {
+          // Native: token + email come via deep link
+          const url = await Linking.getInitialURL();
+          if (!url) {
+            setStatus("error");
+            setMessage("No confirmation URL found.");
+            return;
+          }
+          const { queryParams } = Linking.parse(url);
+          token = queryParams?.token as string | undefined;
+          email = queryParams?.email as string | undefined;
+          type = (queryParams?.type as string | undefined) ?? "signup";
+        }
 
-      // Confirm sign-up with Supabase
-      const { error } = await supabase.auth.verifyOtp({
-        token: token,
-        type: "signup",
-        email: email,
-      });
-      if (error) {
+        if (Platform.OS === "web" && !tokenHash) {
+          setStatus("error");
+          setMessage("No confirmation token found in URL.");
+          return;
+        }
+        if (Platform.OS !== "web" && (!token || !email)) {
+          setStatus("error");
+          setMessage("Missing token or email in confirmation URL.");
+          return;
+        }
+
+        const { error } = await supabase.auth.verifyOtp(
+          Platform.OS === "web"
+            ? { token_hash: tokenHash!, type: type as any }
+            : { token: token!, type: type as any, email: email! }
+        );
+
+        if (error) {
+          setStatus("error");
+          setMessage(error.message);
+        } else {
+          setStatus("success");
+          setMessage("Your account has been confirmed! Taking you to the app…");
+          setTimeout(() => router.replace("/(tabs)"), 2000);
+        }
+      } catch {
         setStatus("error");
-        setMessage(error.message);
-      } else {
-        setStatus("success");
-        setMessage("Your account has been confirmed! Redirecting...");
-        setTimeout(() => {
-          navigation.replace("Dashboard"); // change to your screen name
-        }, 2000);
+        setMessage("An unexpected error occurred.");
       }
     };
 
-    getInitialURL();
-  }, [navigation]);
+    confirm();
+  }, []);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>
-        {status === "loading"
-          ? "Confirming..."
-          : status === "success"
-            ? "Success!"
-            : "Error"}
-      </Text>
-      <Text style={styles.message}>{message}</Text>
-      {status === "loading" && <ActivityIndicator size="large" color="#555" />}
+    <View style={styles.root}>
+      <View style={styles.card}>
+        {status === "loading" && (
+          <>
+            <ActivityIndicator size="large" color={COLORS.tan} style={styles.spinner} />
+            <Text style={styles.heading}>Confirming…</Text>
+            <Text style={styles.body}>{message}</Text>
+          </>
+        )}
+        {status === "success" && (
+          <>
+            <Text style={styles.emoji}>✅</Text>
+            <Text style={styles.heading}>Email verified!</Text>
+            <Text style={styles.body}>{message}</Text>
+          </>
+        )}
+        {status === "error" && (
+          <>
+            <Text style={styles.emoji}>❌</Text>
+            <Text style={[styles.heading, styles.headingError]}>Something went wrong</Text>
+            <Text style={styles.body}>{message}</Text>
+            <Text style={styles.hint}>The link may have expired. Try signing up again.</Text>
+          </>
+        )}
+      </View>
+      <Text style={styles.ornament}>✦</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
+    backgroundColor: COLORS.cream,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    paddingHorizontal: 32,
   },
-  title: {
-    fontSize: 24,
-    marginBottom: 12,
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    paddingHorizontal: 28,
+    paddingVertical: 36,
+    alignItems: "center",
+    width: "100%",
+    shadowColor: COLORS.ink,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.09,
+    shadowRadius: 18,
+    elevation: 5,
+    borderTopWidth: 5,
+    borderTopColor: COLORS.tan,
   },
-  message: {
-    fontSize: 16,
+  spinner: {
+    marginBottom: 20,
+  },
+  emoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  heading: {
+    fontFamily: serif,
+    fontSize: 22,
+    fontWeight: "700",
+    color: COLORS.ink,
+    marginBottom: 10,
+  },
+  headingError: {
+    color: "#B03A2A",
+  },
+  body: {
+    fontFamily: serif,
+    fontSize: 14,
+    color: COLORS.inkFaint,
     textAlign: "center",
+    lineHeight: 22,
+  },
+  hint: {
+    fontFamily: serif,
+    fontSize: 13,
+    color: COLORS.inkMuted,
+    textAlign: "center",
+    marginTop: 10,
+    fontStyle: "italic",
+  },
+  ornament: {
+    color: "#D4B69A",
+    fontSize: 16,
+    marginTop: 28,
   },
 });
