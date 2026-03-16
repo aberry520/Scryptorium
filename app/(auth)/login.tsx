@@ -69,6 +69,7 @@ function StyledInput({
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [loading, setLoading] = useState(false);
@@ -85,14 +86,19 @@ export default function LoginScreen() {
   const handleSignUp = async () => {
     setError("");
     setLoading(true);
+    if (password !== passwordConfirm) {
+      setError("Passwords do not match.");
+      setLoading(false);
+      return;
+    }
     try {
-const { data: authData, error: authError } = await supabase.auth.signUp({
-  email,
-  password,
-  options: {
-    emailRedirectTo: "https://scryptorium.vercel.app/confirmsignup",
-  },
-});
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      // options: {
+      //   emailRedirectTo: "https://scryptorium.vercel.app/confirmsignup",
+      // },
+    });
       if (authError) { setError(authError.message); return; }
       const userId = authData.user?.id;
       if (!userId) { setError("Unable to get user ID from signup."); return; }
@@ -101,8 +107,10 @@ const { data: authData, error: authError } = await supabase.auth.signUp({
         .insert([{ id: userId, name: "" }]);
       if (profileError) { setError(profileError.message); return; }
       // ✅ Success — show verify modal and switch to login
-      setShowVerifyModal(true);
-      setMode("login");
+      // setShowVerifyModal(true);
+      // setMode("login");
+      // For now, skip email verification to reduce friction. Mark email as confirmed in Supabase, then switch to login.
+      handleLogin();
     } catch {
       setError("An unexpected error occurred during sign up.");
     } finally {
@@ -150,7 +158,14 @@ const { data: authData, error: authError } = await supabase.auth.signUp({
               onChangeText={setPassword}
               secureTextEntry
             />
-
+            {mode === "signup" && (
+              <StyledInput
+                label="Confirm Password"
+                value={passwordConfirm}
+                onChangeText={setPasswordConfirm}
+                secureTextEntry
+              />
+            )}
             {error ? (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{error}</Text>
