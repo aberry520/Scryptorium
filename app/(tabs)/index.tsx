@@ -1,4 +1,7 @@
+import { BookDetailModal } from "@/components/BookDetailModal";
+import { BookSpine } from "@/components/BookSpine";
 import { supabase } from "@/lib/supabase";
+import { ActiveLoan, BorrowedLoan, LibraryBook } from "@/types";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -10,9 +13,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { BookSpine } from "@/components/BookSpine";
-import { BookDetailModal } from "@/components/BookDetailModal";
-import { LibraryBook, ActiveLoan, BorrowedLoan } from "@/types";
 
 export default function HomeScreen() {
   const [books, setBooks] = useState<LibraryBook[]>([]);
@@ -318,7 +318,7 @@ export default function HomeScreen() {
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by title or author…"
+            placeholder="Search Library"
             placeholderTextColor="#6A5A4A"
             value={searchQuery}
             onChangeText={setSearchQuery}

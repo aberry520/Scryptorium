@@ -66,39 +66,49 @@ export default function ModalScreen() {
   }, [scannerVisible]);
 
   // Search both local DB and Open Library as user types
-  useEffect(() => {
-    if (mode !== "search") return;
+ useEffect(() => {
+  if (mode !== "search") return;
+  if (debounceTimer.current) clearTimeout(debounceTimer.current);
+  const trimmed = query.trim();
+  if (trimmed.length < 2) {
+    setResults([]);
+    return;
+  }
 
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-
-    if (query.trim().length < 2) {
-      setResults([]);
+  // --- ISBN detection ---
+  if (/^[0-9Xx\-\s]+$/.test(trimmed)) {
+    const clean = trimmed.replace(/[-\s]/g, "");
+    if (
+      /^[0-9]{13}$/.test(clean) || // ISBN-13
+      /^[0-9]{9}[0-9Xx]$/.test(clean) // ISBN-10
+    ) {
+      doIsbnLookup(clean);
       return;
     }
+  }
 
-    debounceTimer.current = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const [localResults, externalResults] = await Promise.all([
-          searchLocal(query.trim()),
-          searchOpenLibrary(query.trim()),
-        ]);
-
-        const localIds = new Set(
-          localResults.map((b) => b.isbn_13 ?? b.isbn_10),
-        );
-        const dedupedExternal = externalResults.filter(
-          (b) => !localIds.has(b.isbn_13 ?? b.isbn_10),
-        );
-
-        setResults([...localResults, ...dedupedExternal]);
-      } catch (e: any) {
-        console.error("Search error:", e.message);
-      } finally {
-        setSearching(false);
-      }
-    }, 350);
-  }, [query, mode]);
+  // --- Normal search ---
+  debounceTimer.current = setTimeout(async () => {
+    setSearching(true);
+    try {
+      const [localResults, externalResults] = await Promise.all([
+        searchLocal(trimmed),
+        searchOpenLibrary(trimmed),
+      ]);
+      const localIds = new Set(
+        localResults.map((b) => b.isbn_13 ?? b.isbn_10)
+      );
+      const dedupedExternal = externalResults.filter(
+        (b) => !localIds.has(b.isbn_13 ?? b.isbn_10)
+      );
+      setResults([...localResults, ...dedupedExternal]);
+    } catch (e: any) {
+      console.error("Search error:", e.message);
+    } finally {
+      setSearching(false);
+    }
+  }, 350);
+}, [query, mode]);
 
   const searchLocal = async (q: string): Promise<SearchResult[]> => {
     const { data, error } = await supabase
@@ -115,7 +125,7 @@ export default function ModalScreen() {
 
   const searchOpenLibrary = async (q: string): Promise<SearchResult[]> => {
     const res = await fetch(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=5&fields=title,author_name,isbn,first_publish_year,cover_i`,
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=10&fields=title,author_name,isbn,first_publish_year,cover_i`,
     );
     const data = await res.json();
     return (data.docs || []).map((doc: OpenLibraryBook, i: number) => ({
@@ -195,6 +205,7 @@ export default function ModalScreen() {
       Alert.alert("Error", "ISBN lookup failed. Please try again.");
     } finally {
       setSearching(false);
+      setQuery("");
     }
   };
 
@@ -486,7 +497,7 @@ export default function ModalScreen() {
 
         <View style={styles.inputRow}>
           <TextInput
-            placeholder="Search by title or author…"
+            placeholder="Search by title, author, or ISBN"
             value={query}
             onChangeText={(t) => {
               setQuery(t);
@@ -660,7 +671,7 @@ const styles = StyleSheet.create({
   },
   list: {
     width: "100%",
-    maxHeight: 380,
+    maxHeight: "75%",
     marginTop: 4,
   },
   sectionLabel: {

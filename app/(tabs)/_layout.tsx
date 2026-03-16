@@ -1,11 +1,10 @@
-import { Tabs, useRouter } from "expo-router";
-import React, { useEffect } from "react";
-
 import { HapticTab } from "@/components/haptic-tab";
-import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Colors } from "@/constants/theme";
 import { useAuth } from "@/context/AuthContext";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { Ionicons } from "@expo/vector-icons";
+import { Tabs, useRouter } from "expo-router";
+import React, { useEffect } from "react";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -33,8 +32,7 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="house.fill" color={color} />
-          ),
+            <Ionicons name="home" size={28} color={color} />          ),
         }}
       />
       <Tabs.Screen
@@ -42,7 +40,7 @@ export default function TabLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="person.fill" color={color} />
+            <Ionicons name="person" size={28} color={color} />
           ),
         }}
       />
